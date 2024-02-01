@@ -813,7 +813,7 @@ mod TeaVaultJediV2 {
 
                 i += 1;
             };
-            assert(!find, Errors::POSITION_DOES_NOT_EXIST);
+            assert(find, Errors::POSITION_DOES_NOT_EXIST);
 
             (amount0, amount1)
         }
