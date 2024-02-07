@@ -143,7 +143,7 @@ mod TeaVaultJediV2 {
     impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
     impl ERC20InternalImpl = ERC20Component::InternalImpl<ContractState>;
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl UpgradeableImpl of IUpgradeable<ContractState> {
         fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
             self.ownable.assert_only_owner();
@@ -151,7 +151,7 @@ mod TeaVaultJediV2 {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl ERC20MetadataImpl of IERC20Metadata<ContractState> {
         fn name(self: @ContractState) -> felt252 {
             self.erc20.name()
@@ -361,7 +361,7 @@ mod TeaVaultJediV2 {
         self.emit(TeaVaultV3PairCreated { tea_vault_address: get_contract_address() });
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl TeaVaultJediV2Impl of super::ITeaVaultJediV2<ContractState> {
         fn SECONDS_IN_A_YEAR(self: @ContractState) -> u256 {
             self.SECONDS_IN_A_YEAR.read()
