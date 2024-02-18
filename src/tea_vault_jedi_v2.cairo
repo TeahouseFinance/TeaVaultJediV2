@@ -350,7 +350,7 @@ mod TeaVaultJediV2 {
         self.FEE_CAP.write(fee_cap);
         let factory_dispatcher = IJediSwapV2FactoryDispatcher { contract_address: factory };
         let pool = factory_dispatcher.get_pool(token0, token1, fee_tier);
-        assert(pool.is_non_zero(), Errors::POOL_NOT_INITIALIZED);
+        assert(contract_address_to_felt252(pool) != 0, Errors::POOL_NOT_INITIALIZED);
         self.pool.write(pool);
         self.token0.write(token0);
         self.token1.write(token1);
@@ -560,7 +560,7 @@ mod TeaVaultJediV2 {
 
         fn deposit(ref self: ContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256) {
             self.reentrancy_guard.start();
-            assert(shares.is_non_zero(), Errors::INVALID_SHARE_AMOUNT);
+            assert(shares != 0, Errors::INVALID_SHARE_AMOUNT);
             self._collect_management_fee();
 
             let total_shares = self.erc20.total_supply();
@@ -570,7 +570,7 @@ mod TeaVaultJediV2 {
             let token1 = self.token1.read();
             let caller = get_caller_address();
             let this = get_contract_address();
-            if total_shares.is_zero() {
+            if total_shares == 0 {
                 // vault is empty, default to 1:1 share to token0 ratio (offseted by _decimalOffset)
                 deposited_amount0 = shares / self.DECIMALS_MULTIPLIER.read();
                 pay(token0, caller, this, deposited_amount0);
@@ -612,7 +612,7 @@ mod TeaVaultJediV2 {
             }
 
             // todo: should be || ? The condition should be either amount is non zero -- fixed
-            assert(deposited_amount0.is_non_zero() || deposited_amount1.is_non_zero(), Errors::INVALID_SHARE_AMOUNT);
+            assert(deposited_amount0 != 0 || deposited_amount1 != 0, Errors::INVALID_SHARE_AMOUNT);
 
             // collect entry fee for users
             // do not collect entry fee for fee recipient
@@ -650,7 +650,7 @@ mod TeaVaultJediV2 {
 
         fn withdraw(ref self: ContractState, mut shares: u256, amount0_min: u256, amount1_min: u256) -> (u256, u256) {
             self.reentrancy_guard.start();
-            assert(shares.is_non_zero(), Errors::INVALID_SHARE_AMOUNT);
+            assert(shares != 0, Errors::INVALID_SHARE_AMOUNT);
             self._collect_management_fee();
 
             let total_shares = self.erc20.total_supply();
@@ -1202,7 +1202,7 @@ mod TeaVaultJediV2 {
         }
 
         fn check_liquidity(self: @ContractState, liquidity: u128) {
-            assert(liquidity.is_non_zero(), Errors::ZERO_LIQUIDITY);
+            assert(liquidity != 0, Errors::ZERO_LIQUIDITY);
         }
 
         fn check_deadline(self: @ContractState, deadline: u64) {
