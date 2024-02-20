@@ -6,6 +6,10 @@ TeaVault Jedi V2 is a managed vault for JediSwap V2.
 
 [Cairo book - installation](https://book.cairo-lang.org/ch01-01-installation.html)
 
+[Scarb - 2.4.4](https://docs.swmansion.com/scarb/download.html)
+
+[Starknet Foundry - 0.16.0](https://github.com/foundry-rs/starknet-foundry/)
+
 ## Compile Contracts
 
 ```bash
