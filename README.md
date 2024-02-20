@@ -16,6 +16,12 @@ TeaVault Jedi V2 is a managed vault for JediSwap V2.
 scarb build
 ```
 
+## Run Tests
+
+```bash
+snforge test
+```
+
 ## Project Structure
 
 Place `JediSwap-v2-core` and `JediSwap-v2-periphery` beside `tea_vault_jedi_v2` (this repo).
