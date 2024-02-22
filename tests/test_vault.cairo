@@ -349,10 +349,33 @@ fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit()
 
     // start_prank(CheatTarget::One(vault_address), manager); // unexpected behavior of nested prank
     // add liquidity
-    let tick_lower = i32Impl::new(60, true);
-    let tick_upper = i32Impl::new(60, false);
-    let liquidity = vault_dispatcher.get_liquidity_for_amounts(tick_lower, tick_upper, 600 * pow(10, 18), 600 * pow(10, 18));
-    vault_dispatcher.add_liquidity(tick_lower, tick_upper, liquidity, 0, 0, BoundedU64::max());
+    let tick_lower0 = i32Impl::new(60, true);
+    let tick_upper0 = i32Impl::new(60, false);
+    let liquidity0 = vault_dispatcher.get_liquidity_for_amounts(tick_lower0, tick_upper0, 210 * pow(10, 18), 210 * pow(10, 18));
+    let tick_lower1 = i32Impl::new(120, true);
+    let tick_upper1 = i32Impl::new(120, false);
+    let liquidity1 = vault_dispatcher.get_liquidity_for_amounts(tick_lower1, tick_upper1, 165 * pow(10, 18), 165 * pow(10, 18));
+    let tick_lower2 = i32Impl::new(180, true);
+    let tick_upper2 = i32Impl::new(180, false);
+    let liquidity2 = vault_dispatcher.get_liquidity_for_amounts(tick_lower2, tick_upper2, 120 * pow(10, 18), 120 * pow(10, 18));
+    let tick_lower3 = i32Impl::new(240, true);
+    let tick_upper3 = i32Impl::new(240, false);
+    let liquidity3 = vault_dispatcher.get_liquidity_for_amounts(tick_lower3, tick_upper3, 75 * pow(10, 18), 75 * pow(10, 18));
+    let tick_lower4 = i32Impl::new(300, true);
+    let tick_upper4 = i32Impl::new(300, false);
+    let liquidity4 = vault_dispatcher.get_liquidity_for_amounts(tick_lower4, tick_upper4, 30 * pow(10, 18), 30 * pow(10, 18));
+    vault_dispatcher.add_liquidity(tick_lower0, tick_upper0, liquidity0, 0, 0, BoundedU64::max());
+    vault_dispatcher.add_liquidity(tick_lower1, tick_upper1, liquidity1, 0, 0, BoundedU64::max());
+    vault_dispatcher.add_liquidity(tick_lower2, tick_upper2, liquidity2, 0, 0, BoundedU64::max());
+    vault_dispatcher.add_liquidity(tick_lower3, tick_upper3, liquidity3, 0, 0, BoundedU64::max());
+    vault_dispatcher.add_liquidity(tick_lower4, tick_upper4, liquidity4, 0, 0, BoundedU64::max());
+
+    // reverted with 'Position length exceeds limit' as expected.
+    // let tick_lower5 = i32Impl::new(3300, true);
+    // let tick_upper5 = i32Impl::new(3300, false);
+    // let liquidity5 = vault_dispatcher.get_liquidity_for_amounts(tick_lower5, tick_upper5, 120 * pow(10, 18), 120 * pow(10, 18));
+    // vault_dispatcher.add_liquidity(tick_lower5, tick_upper5, liquidity5, 0, 0, BoundedU64::max());
+
     let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
     assert(token0_dispatcher.balance_of(vault_address) == 400 * pow(10, 18), 'incorrect amount0 (2)');
     assert(token1_dispatcher.balance_of(vault_address) == 400 * pow(10, 18), 'incorrect amount1 (2)');
@@ -360,15 +383,15 @@ fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit()
     assert(is_close_to(underlying1, 1000 * pow(10, 18), 10), 'incorrect total1 (1)');
 
     // swap exact input
-    vault_dispatcher.swap_input_single(true, 200 * pow(10, 18), 0, 0, BoundedU64::max());
+    vault_dispatcher.swap_input_single(true, 40 * pow(10, 18), 0, 0, BoundedU64::max());
     let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
-    assert(token0_dispatcher.balance_of(vault_address) == 200 * pow(10, 18), 'incorrect amount0 (3)');
-    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 600 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (3)');
+    assert(token0_dispatcher.balance_of(vault_address) == 360 * pow(10, 18), 'incorrect amount0 (3)');
+    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 440 * pow(10, 18), 2 * pow(10, 18)), 'incorrect amount1 (3)');
     assert(is_close_to(underlying0, 1000 * pow(10, 18), 10), 'incorrect total0 (2)');
     assert(is_close_to(underlying1, 1000 * pow(10, 18), 10), 'incorrect total1 (2)');
 
     // swap exact output
-    vault_dispatcher.swap_output_single(false, 200 * pow(10, 18), BoundedU256::max(), 0, BoundedU64::max());
+    vault_dispatcher.swap_output_single(false, 40 * pow(10, 18), BoundedU256::max(), 0, BoundedU64::max());
     let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
     assert(token0_dispatcher.balance_of(vault_address) == 400 * pow(10, 18), 'incorrect amount0 (4)');
     assert(is_close_to(token1_dispatcher.balance_of(vault_address), 400 * pow(10, 18), 2 * pow(10, 18)), 'incorrect amount1 (4)');
@@ -376,29 +399,45 @@ fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit()
     assert(is_close_to(underlying1, 1000 * pow(10, 18), 10), 'incorrect total1 (3)');
 
     // remove liquidity
-    vault_dispatcher.remove_liquidity(tick_lower, tick_upper, liquidity / 2, 0, 0, BoundedU64::max());
+    vault_dispatcher.remove_liquidity(tick_lower0, tick_upper0, liquidity0 / 2, 0, 0, BoundedU64::max());
+    vault_dispatcher.remove_liquidity(tick_lower1, tick_upper1, liquidity1 / 2, 0, 0, BoundedU64::max());
+    vault_dispatcher.remove_liquidity(tick_lower2, tick_upper2, liquidity2, 0, 0, BoundedU64::max());
+    vault_dispatcher.remove_liquidity(tick_lower3, tick_upper3, liquidity3 / 2, 0, 0, BoundedU64::max());
+    vault_dispatcher.remove_liquidity(tick_lower4, tick_upper4, liquidity4 / 2, 0, 0, BoundedU64::max());
+    assert(vault_dispatcher.get_all_positions().len() == 4, 'incorrect position length');
+
     let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
-    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 700 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (5)');
-    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 700 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (5)');
+    assert(is_close_to(token0_dispatcher.balance_of(vault_address), 760 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (5)');
+    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 760 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (5)');
     assert(is_close_to(underlying0, 1000 * pow(10, 18), pow(10, 18)), 'incorrect total0 (4)');
     assert(is_close_to(underlying1, 1000 * pow(10, 18), pow(10, 18)), 'incorrect total1 (4)');
+    assert(is_close_to(token0_dispatcher.balance_of(owner), 1012 * pow(10, 15), 10), 'incorrect fee amount0');
+    assert(is_close_to(token1_dispatcher.balance_of(owner), 12 * pow(10, 15), 5 * pow(10, 13)), 'incorrect fee amount1');
 
-    // deposit more // failed because of invalid callback caller
-    // start_prank(CheatTarget::One(vault_address), user);
-    // vault_dispatcher.deposit(shares * 2, BoundedU256::max(), BoundedU256::max());
-    // let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
-    // assert(is_close_to(token1_dispatcher.balance_of(vault_address), 1400 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (6)');
-    // assert(is_close_to(token1_dispatcher.balance_of(vault_address), 1400 * pow(10, 18), pow(10, 18)), 'incorrect amount1 (6)');
-    // assert(is_close_to(underlying0, 2000 * pow(10, 18), pow(10, 18)), 'incorrect total0 (5)');
-    // assert(is_close_to(underlying1, 2000 * pow(10, 18), pow(10, 18)), 'incorrect total1 (5)');
+    // deposit more
+    // hardcode the recipient to self.pool.read()
+    start_prank(CheatTarget::One(vault_address), user);
+    vault_dispatcher.deposit(shares * 2, BoundedU256::max(), BoundedU256::max());
+    let token0 = token0_dispatcher.balance_of(vault_address);
+    let token1 = token1_dispatcher.balance_of(vault_address);
+    let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
+    assert(is_close_to(token0_dispatcher.balance_of(vault_address), 2280 * pow(10, 18), 2 * pow(10, 18)), 'incorrect amount0 (6)');
+    assert(is_close_to(token1_dispatcher.balance_of(vault_address), 2280 * pow(10, 18), 2 * pow(10, 18)), 'incorrect amount1 (6)');
+    assert(is_close_to(underlying0, 3000 * pow(10, 18), pow(10, 18)), 'incorrect total0 (5)');
+    assert(is_close_to(underlying1, 3000 * pow(10, 18), pow(10, 18)), 'incorrect total1 (5)');
 
     // withdraw
-    // let token0_before = token0_dispatcher.balance_of(user);
-    // let token1_before = token1_dispatcher.balance_of(user);
-    // vault_dispatcher.withdraw(shares / 2, 0, 0);
-    // let token0_after = token0_dispatcher.balance_of(user);
-    // let token1_after = token1_dispatcher.balance_of(user);
-    // assert(is_close_to(token0_after - token0_before, underlying0 / 6, pow(10, 18)));
-    // assert(is_close_to(token1_after - token1_before, underlying1 / 6, pow(10, 18)));
-    // stop_prank(CheatTarget::One(vault_address));
+    let token0_before = token0_dispatcher.balance_of(user);
+    let token1_before = token1_dispatcher.balance_of(user);
+    vault_dispatcher.withdraw(shares / 3, 0, 0);
+    let token0_after = token0_dispatcher.balance_of(user);
+    let token1_after = token1_dispatcher.balance_of(user);
+    assert(is_close_to(token0_after - token0_before, underlying0 / 9, pow(10, 18)), 'incorrect withdrawal amount0');
+    assert(is_close_to(token1_after - token1_before, underlying1 / 9, pow(10, 18)), 'incorrect withdrawal amount1');
+    let (underlying0_after, underlying1_after) = vault_dispatcher.vault_all_underlying_assets();
+    assert(is_close_to(token0_dispatcher.balance_of(vault_address), token0 * 8 / 9, pow(10, 18)), 'incorrect amount0 (7)');
+    assert(is_close_to(token1_dispatcher.balance_of(vault_address), token1 * 8 / 9, pow(10, 18)), 'incorrect amount1 (7)');
+    assert(is_close_to(underlying0_after, underlying0 * 8 / 9, pow(10, 18)), 'incorrect total0 (6)');
+    assert(is_close_to(underlying1_after, underlying1 * 8 / 9, pow(10, 18)), 'incorrect total1 (6)');
+    stop_prank(CheatTarget::One(vault_address));
 }
