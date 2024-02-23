@@ -538,11 +538,13 @@ mod TeaVaultJediV2 {
         }
 
         fn set_fee_config(ref self: ContractState, fee_config: FeeConfig) {
+            self.reentrancy_guard.start();
             self.ownable.assert_only_owner();
 
             self._collect_all_swap_fee();
             self._collect_management_fee();
             self._set_fee_config(fee_config);
+            self.reentrancy_guard.end();
         }
 
         fn assign_manager(ref self: ContractState, manager: ContractAddress) {
@@ -553,9 +555,12 @@ mod TeaVaultJediV2 {
         }
 
         fn collect_management_fee(ref self: ContractState) -> u256 {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
-
-            self._collect_management_fee()
+    
+            let fee_amount = self._collect_management_fee();
+            self.reentrancy_guard.end();
+            fee_amount
         }
 
         fn deposit(ref self: ContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256) {
@@ -736,6 +741,7 @@ mod TeaVaultJediV2 {
             amount1_min: u256,
             deadline: u64
         ) -> (u256, u256) {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
 
@@ -767,7 +773,7 @@ mod TeaVaultJediV2 {
                 self.positions.write(i, Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
                 self.position_length.write(position_length + 1);
             }
-
+            self.reentrancy_guard.end();
             (amount0, amount1)
         }
 
@@ -780,6 +786,7 @@ mod TeaVaultJediV2 {
             amount1_min: u256,
             deadline: u64
         ) -> (u256, u256) {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
 
@@ -814,11 +821,12 @@ mod TeaVaultJediV2 {
                 i += 1;
             };
             assert(find, Errors::POSITION_DOES_NOT_EXIST);
-
+            self.reentrancy_guard.end();
             (amount0, amount1)
         }
 
         fn collect_position_swap_fee(ref self: ContractState, tick_lower: i32, tick_upper: i32) -> (u128, u128) {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
 
             let position_length = self.position_length.read();
@@ -838,14 +846,17 @@ mod TeaVaultJediV2 {
                 i += 1;
             };
             assert(find, Errors::POSITION_DOES_NOT_EXIST);
-
+            self.reentrancy_guard.end();
             (amount0, amount1)
         }
 
         fn collect_all_swap_fee(ref self: ContractState) -> (u128, u128) {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
 
-            self._collect_all_swap_fee()
+            let (amount0, amount1) = self._collect_all_swap_fee();
+            self.reentrancy_guard.end();
+            (amount0, amount1)
         }
 
         fn swap_input_single(
@@ -856,6 +867,7 @@ mod TeaVaultJediV2 {
             mut min_price_in_sqrt_price_x96: u256,
             deadline: u64
         ) -> u256 {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
             self.callback_status.write(2);
@@ -886,6 +898,7 @@ mod TeaVaultJediV2 {
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
             self.callback_status.write(1);
+            self.reentrancy_guard.end();
             amount_out
         }
 
@@ -897,6 +910,7 @@ mod TeaVaultJediV2 {
             mut max_price_in_sqrt_price_x96: u256,
             deadline: u64
         ) -> u256 {
+            self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
             self.callback_status.write(2);
@@ -932,6 +946,7 @@ mod TeaVaultJediV2 {
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out});
             self.callback_status.write(1);
+            self.reentrancy_guard.end();
             amount_in
         }
 
