@@ -2,8 +2,14 @@
 version = 1
 
 [[package]]
+name = "alexandria_storage"
+version = "0.2.0"
+source = "git+https://github.com/keep-starknet-strange/alexandria.git?tag=cairo-v2.3.0-rc0#ae1d5149ff601a7ac5b39edc867d33ebd83d7f4f"
+
+[[package]]
 name = "jediswap_v2_core"
 version = "0.0.1"
+source = "git+https://github.com/jediswaplabs/JediSwap-v2-core.git#aa72cb330f88db0768c331ad0f065cac7810c215"
 dependencies = [
  "openzeppelin",
  "snforge_std",
@@ -13,6 +19,7 @@ dependencies = [
 [[package]]
 name = "jediswap_v2_periphery"
 version = "0.0.1"
+source = "git+https://github.com/jediswaplabs/JediSwap-v2-periphery.git#51da9ee05ade79898d4ed27d13317b39f8475441"
 dependencies = [
  "jediswap_v2_core",
  "openzeppelin",
@@ -34,6 +41,7 @@ source = "git+https://github.com/foundry-rs/starknet-foundry.git?tag=v0.16.0#f58
 name = "tea_vault_jedi_v2"
 version = "0.1.0"
 dependencies = [
+ "alexandria_storage",
  "jediswap_v2_core",
  "jediswap_v2_periphery",
  "openzeppelin",
