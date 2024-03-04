@@ -67,7 +67,7 @@ fn setup() -> (
     let decimal_offset = 0;
     let fee_cap = 999999;
     let fee_config = FeeConfig{
-        vault: owner,
+        treasury: owner,
         entry_fee: 0,
         exit_fee: 0,
         performance_fee: 0,
@@ -106,14 +106,14 @@ fn token_approve(token_dispatcher: ERC20ABIDispatcher, owner: ContractAddress, s
 fn set_fee_config(
     vault_dispatcher: ITeaVaultJediV2Dispatcher,
     sender: ContractAddress,
-    vault: ContractAddress,
+    treasury: ContractAddress,
     entry_fee: u32,
     exit_fee: u32,
     performance_fee: u32,
     management_fee: u32
 ) -> FeeConfig {
     let fee_config = FeeConfig{
-        vault: vault,
+        treasury: treasury,
         entry_fee: entry_fee,
         exit_fee: exit_fee,
         performance_fee: performance_fee,
@@ -157,7 +157,7 @@ fn test_owner_functions_owner_set_valid_fees() {
 
     let fee_config = set_fee_config(vault_dispatcher, owner, owner, 1000, 2000, 100000, 10000);
     let fees = vault_dispatcher.fee_config();
-    assert(fees.vault == fee_config.vault, 'fee vault not correct');
+    assert(fees.treasury == fee_config.treasury, 'fee treasury not correct');
     assert(fees.entry_fee == fee_config.entry_fee, 'entry fee not correct');
     assert(fees.exit_fee == fee_config.exit_fee, 'exit fee not correct');
     assert(fees.performance_fee == fee_config.performance_fee, 'performance fee not correct');

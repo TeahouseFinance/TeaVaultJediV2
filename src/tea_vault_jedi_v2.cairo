@@ -3,7 +3,7 @@ use yas_core::numbers::signed_integer::{ i32::i32, i256::i256 };
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 struct FeeConfig {
-    vault: ContractAddress,
+    treasury: ContractAddress,
     entry_fee: u32,
     exit_fee: u32,
     performance_fee: u32,
@@ -558,7 +558,7 @@ mod TeaVaultJediV2 {
 
         fn collect_management_fee(ref self: ContractState) -> u256 {
             self.reentrancy_guard.start();
-            self.assert_only_manager();
+            self._assert_only_manager();
     
             let fee_amount = self._collect_management_fee();
             self.reentrancy_guard.end();
@@ -626,16 +626,16 @@ mod TeaVaultJediV2 {
             let FEE_MULTIPLIER = self.FEE_MULTIPLIER.read();
             let mut entry_fee_amount0 = 0;
             let mut entry_fee_amount1 = 0;
-            if caller != fee_config.vault {
+            if caller != fee_config.treasury {
                 entry_fee_amount0 = mul_div_rounding_up(deposited_amount0, fee_config.entry_fee.into(), FEE_MULTIPLIER);
                 entry_fee_amount1 = mul_div_rounding_up(deposited_amount1, fee_config.entry_fee.into(), FEE_MULTIPLIER);
                 if entry_fee_amount0 > 0 {
                     deposited_amount0 += entry_fee_amount0;
-                    pay(token0, caller, fee_config.vault, entry_fee_amount0);
+                    pay(token0, caller, fee_config.treasury, entry_fee_amount0);
                 }
                 if entry_fee_amount1 > 0 {
                     deposited_amount1 += entry_fee_amount1;
-                    pay(token1, caller, fee_config.vault, entry_fee_amount1);
+                    pay(token1, caller, fee_config.treasury, entry_fee_amount1);
                 }
             }
             // slippage check
@@ -668,10 +668,10 @@ mod TeaVaultJediV2 {
             let this = get_contract_address();
 
             let mut exit_fee_amount = 0;
-            if caller != fee_config.vault {
+            if caller != fee_config.treasury {
                 exit_fee_amount = mul_div_rounding_up(shares, fee_config.exit_fee.into(), FEE_MULTIPLIER);
                 if exit_fee_amount > 0 {
-                    self.erc20._transfer(caller, fee_config.vault, exit_fee_amount);
+                    self.erc20._transfer(caller, fee_config.treasury, exit_fee_amount);
                     shares -= exit_fee_amount;
                 }
             }
@@ -742,8 +742,8 @@ mod TeaVaultJediV2 {
             deadline: u64
         ) -> (u256, u256) {
             self.reentrancy_guard.start();
-            self.assert_only_manager();
-            self.check_deadline(deadline);
+            self._assert_only_manager();
+            self._check_deadline(deadline);
 
             let position_length = self.position_length.read();
             let mut find = false;
@@ -787,8 +787,8 @@ mod TeaVaultJediV2 {
             deadline: u64
         ) -> (u256, u256) {
             self.reentrancy_guard.start();
-            self.assert_only_manager();
-            self.check_deadline(deadline);
+            self._assert_only_manager();
+            self._check_deadline(deadline);
 
             let position_length = self.position_length.read();
             let mut i = 0;
@@ -827,7 +827,7 @@ mod TeaVaultJediV2 {
 
         fn collect_position_swap_fee(ref self: ContractState, tick_lower: i32, tick_upper: i32) -> (u128, u128) {
             self.reentrancy_guard.start();
-            self.assert_only_manager();
+            self._assert_only_manager();
 
             let position_length = self.position_length.read();
             let mut i = 0;
@@ -852,7 +852,7 @@ mod TeaVaultJediV2 {
 
         fn collect_all_swap_fee(ref self: ContractState) -> (u128, u128) {
             self.reentrancy_guard.start();
-            self.assert_only_manager();
+            self._assert_only_manager();
 
             let (amount0, amount1) = self._collect_all_swap_fee();
             self.reentrancy_guard.end();
@@ -871,8 +871,8 @@ mod TeaVaultJediV2 {
             let last_swap = self.last_swap_block.read();
             assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
             self.reentrancy_guard.start();
-            self.assert_only_manager();
-            self.check_deadline(deadline);
+            self._assert_only_manager();
+            self._check_deadline(deadline);
             self.callback_status.write(2);
 
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
@@ -918,8 +918,8 @@ mod TeaVaultJediV2 {
             let last_swap = self.last_swap_block.read();
             assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
             self.reentrancy_guard.start();
-            self.assert_only_manager();
-            self.check_deadline(deadline);
+            self._assert_only_manager();
+            self._check_deadline(deadline);
             self.callback_status.write(2);
 
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
@@ -1093,7 +1093,7 @@ mod TeaVaultJediV2 {
             liquidity: u128,
             callback_data: Array<felt252>
         ) -> (u256, u256) {
-            self.check_liquidity(liquidity);
+            self._check_liquidity(liquidity);
             self.callback_status.write(2);
             let pool = self.pool.read();
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: pool };
@@ -1112,7 +1112,7 @@ mod TeaVaultJediV2 {
         }
 
         fn _remove_liquidity(ref self: ContractState, tick_lower: i32, tick_upper: i32, liquidity: u128) -> (u256, u256) {
-            self.check_liquidity(liquidity);
+            self._check_liquidity(liquidity);
             let pool = self.pool.read();
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: pool };
             let (amount0, amount1) = pool_dispatcher.burn(tick_lower, tick_upper, liquidity);
@@ -1162,7 +1162,7 @@ mod TeaVaultJediV2 {
                 };
                 let collected_shares = mul_div_rounding_up(self.total_supply(), fee_times_time_diff, denominator);
                 if collected_shares > 0 {
-                    self.erc20._mint(fee_config.vault, collected_shares);
+                    self.erc20._mint(fee_config.treasury, collected_shares);
                     self.emit(ManagementFeeCollected { shares: collected_shares });
                 }
                 self.last_collect_management_fee.write(get_block_timestamp());
@@ -1188,10 +1188,10 @@ mod TeaVaultJediV2 {
                 FEE_MULTIPLIER
             );
             if performance_fee_amount0 > 0 {
-                pay(self.token0.read(), get_contract_address(), fee_config.vault, performance_fee_amount0);
+                pay(self.token0.read(), get_contract_address(), fee_config.treasury, performance_fee_amount0);
             }
             if performance_fee_amount1 > 0 {
-                pay(self.token1.read(), get_contract_address(), fee_config.vault, performance_fee_amount1);
+                pay(self.token1.read(), get_contract_address(), fee_config.treasury, performance_fee_amount1);
             }
 
             self.emit(CollectSwapFees {
@@ -1209,15 +1209,15 @@ mod TeaVaultJediV2 {
             dispatcher.balance_of(get_contract_address())
         }
 
-        fn assert_only_manager(self: @ContractState) {
+        fn _assert_only_manager(self: @ContractState) {
             assert(get_caller_address() == self.manager.read(), Errors::CALLER_IS_NOT_MANAGER);
         }
 
-        fn check_liquidity(self: @ContractState, liquidity: u128) {
+        fn _check_liquidity(self: @ContractState, liquidity: u128) {
             assert(liquidity != 0, Errors::ZERO_LIQUIDITY);
         }
 
-        fn check_deadline(self: @ContractState, deadline: u64) {
+        fn _check_deadline(self: @ContractState, deadline: u64) {
             assert(deadline >= get_block_timestamp(), Errors::TRANSACTION_EXPIRED);
         }
     }
