@@ -1172,7 +1172,7 @@ mod TeaVaultJediV2 {
                 else {
                     1
                 };
-                let collected_shares = mul_div_rounding_up(self.total_supply(), fee_times_time_diff, denominator);
+                let collected_shares = mul_div_rounding_up(self.erc20.total_supply(), fee_times_time_diff, denominator);
                 if collected_shares > 0 {
                     self.erc20._mint(fee_config.treasury, collected_shares);
                     self.emit(ManagementFeeCollected { shares: collected_shares });
