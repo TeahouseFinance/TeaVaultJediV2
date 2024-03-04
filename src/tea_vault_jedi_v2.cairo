@@ -36,6 +36,7 @@ mod Errors {
     const INVALID_PRICE_SLIPPAGE: felt252 = 'Invalid price slippage';
     const POSITION_DOES_NOT_EXIST: felt252 = 'Position does not exist';
     const ZERO_LIQUIDITY: felt252 = 'Zero liquidity';
+    const SWAP_RATE_LIMIT: felt252 = 'Swap rate limit';
     const CALLER_IS_NOT_MANAGER: felt252 = 'Caller is not manager';
     const INVALID_CALLBACK_STATUS: felt252 = 'Invalid callback status';
     const INVALID_CALLBACK_CALLER: felt252 = 'Invalid callback caller';
@@ -92,6 +93,7 @@ mod TeaVaultJediV2 {
     use super::{ FeeConfig, Position, MintCallbackData, SwapCallbackData, Errors };
     use starknet::{
         contract_address::{ ContractAddress, ContractAddressZero },
+        info::get_block_number,
         ClassHash,
         get_block_timestamp,
         get_caller_address,
@@ -182,6 +184,7 @@ mod TeaVaultJediV2 {
         pool: ContractAddress,
         token0: ContractAddress,
         token1: ContractAddress,
+        last_swap_block: u64,
         callback_status: u8,
         last_collect_management_fee: u64,
         #[substorage(v0)]
@@ -864,6 +867,9 @@ mod TeaVaultJediV2 {
             mut min_price_in_sqrt_price_x96: u256,
             deadline: u64
         ) -> u256 {
+            let current_block = get_block_number();
+            let last_swap = self.last_swap_block.read();
+            assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
             self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
@@ -894,6 +900,7 @@ mod TeaVaultJediV2 {
             assert (amount_out >= amount_out_min, Errors::INVALID_PRICE_SLIPPAGE);
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
+            self.last_swap_block.write(current_block);
             self.callback_status.write(1);
             self.reentrancy_guard.end();
             amount_out
@@ -907,6 +914,9 @@ mod TeaVaultJediV2 {
             mut max_price_in_sqrt_price_x96: u256,
             deadline: u64
         ) -> u256 {
+            let current_block = get_block_number();
+            let last_swap = self.last_swap_block.read();
+            assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
             self.reentrancy_guard.start();
             self.assert_only_manager();
             self.check_deadline(deadline);
@@ -942,6 +952,7 @@ mod TeaVaultJediV2 {
             assert (amount_in <= amount_in_max, Errors::INVALID_PRICE_SLIPPAGE);
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out});
+            self.last_swap_block.write(current_block);
             self.callback_status.write(1);
             self.reentrancy_guard.end();
             amount_in

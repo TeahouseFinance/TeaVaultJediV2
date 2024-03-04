@@ -1,4 +1,4 @@
-use starknet::{ ContractAddress };
+use starknet::{ ContractAddress, info::get_block_number };
 use core::integer::{ BoundedU256, BoundedU64 };
 use openzeppelin::{token::erc20::{ ERC20ABIDispatcher, interface::ERC20ABIDispatcherTrait }};
 use yas_core::{
@@ -14,7 +14,7 @@ use tea_vault_jedi_v2::tea_vault_jedi_v2::{
     ITeaVaultJediV2DispatcherTrait,
     FeeConfig
 };
-use snforge_std::{ declare, CheatTarget, ContractClassTrait, start_prank, stop_prank, start_warp, stop_warp };
+use snforge_std::{ declare, CheatTarget, ContractClassTrait, start_prank, stop_prank, start_roll, stop_roll, start_warp, stop_warp };
 
 use super::utils::{ owner, manager, user, invalid_address, new_owner, token_0_1, is_close_to };
 
@@ -390,6 +390,10 @@ fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit()
     assert(is_close_to(underlying0, 1000 * pow(10, 18), 10), 'incorrect total0 (2)');
     assert(is_close_to(underlying1, 1000 * pow(10, 18), 10), 'incorrect total1 (2)');
 
+    // revert without rolling as expected
+    // vault_dispatcher.swap_output_single(false, 40 * pow(10, 18), BoundedU256::max(), 0, BoundedU64::max());
+    start_roll(CheatTarget::One(vault_address), get_block_number() + 1);
+
     // swap exact output
     vault_dispatcher.swap_output_single(false, 40 * pow(10, 18), BoundedU256::max(), 0, BoundedU64::max());
     let (underlying0, underlying1) = vault_dispatcher.vault_all_underlying_assets();
@@ -439,5 +443,6 @@ fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit()
     assert(is_close_to(token1_dispatcher.balance_of(vault_address), token1 * 8 / 9, pow(10, 18)), 'incorrect amount1 (7)');
     assert(is_close_to(underlying0_after, underlying0 * 8 / 9, pow(10, 18)), 'incorrect total0 (6)');
     assert(is_close_to(underlying1_after, underlying1 * 8 / 9, pow(10, 18)), 'incorrect total1 (6)');
+    stop_roll(CheatTarget::One(vault_address));
     stop_prank(CheatTarget::One(vault_address));
 }
