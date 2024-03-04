@@ -55,7 +55,6 @@ mod VaultUtils {
         position: Position
     ) -> (u256, u256, u256, u256) {
         let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: pool };
-        let sqrt_price_x96 = pool_dispatcher.get_sqrt_price_X96();
         let fee_growth_global0_x128 = pool_dispatcher.get_fee_growth_global_0_X128();
         let fee_growth_global1_x128 = pool_dispatcher.get_fee_growth_global_1_X128();
         let tick_lower_info = pool_dispatcher.get_tick_info(position.tick_lower);
@@ -65,12 +64,7 @@ mod VaultUtils {
         };
 
         let position_info = pool_dispatcher.get_position_info(position_key);
-        let (amount0, amount1) = LiquidityAmounts::get_amounts_for_liquidity(
-            sqrt_price_x96,
-            get_sqrt_ratio_at_tick(position.tick_lower),
-            get_sqrt_ratio_at_tick(position.tick_upper),
-            position_info.liquidity
-        );
+        let (amount0, amount1) = get_amounts_for_liquidity(pool, position.tick_lower, position.tick_upper, position_info.liquidity);
         let tick = pool_dispatcher.get_tick();
         let fee0 = position_info.tokens_owed_0.into() + position_swap_fee(
             tick,
