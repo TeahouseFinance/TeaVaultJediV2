@@ -625,10 +625,10 @@ mod TeaVaultJediV2 {
 
             // collect entry fee for users
             // do not collect entry fee for fee recipient
-            let fee_config = self.fee_config.read();
             let mut entry_fee_amount0 = 0;
             let mut entry_fee_amount1 = 0;
-            if caller != fee_config.treasury {
+            if caller != self.fee_config.read().treasury {
+                let fee_config = self.fee_config.read();
                 entry_fee_amount0 = mul_div_rounding_up(deposited_amount0, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
                 entry_fee_amount1 = mul_div_rounding_up(deposited_amount1, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
                 if entry_fee_amount0 > 0 {
