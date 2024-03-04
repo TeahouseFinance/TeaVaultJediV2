@@ -86,6 +86,8 @@ trait ITeaVaultJediV2<TContractState> {
     fn swap_output_single(ref self: TContractState, zero_for_one: bool, amount_out: u256, amount_in_max: u256, max_price_in_sqrt_price_x96: u256, deadline: u64) -> u256;
     fn jediswap_v2_mint_callback(ref self: TContractState, amount0_owed: u256, amount1_owed: u256, callback_data_span: Span<felt252>);
     fn jediswap_v2_swap_callback(ref self: TContractState, amount0_delta: i256, amount1_delta: i256, callback_data_span: Span<felt252>);
+    fn pause(ref self: TContractState);
+    fn unpause(ref self: TContractState);
 }
 
 #[starknet::contract]
@@ -105,7 +107,7 @@ mod TeaVaultJediV2 {
     use yas_core::utils::math_utils::{ FullMath::{ mul_div, mul_div_rounding_up }, pow };
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
-    use openzeppelin::security::ReentrancyGuardComponent;
+    use openzeppelin::security::{ PausableComponent, ReentrancyGuardComponent };
     use openzeppelin::token::erc20::{
         ERC20Component,
         ERC20ABIDispatcher,
@@ -129,6 +131,7 @@ mod TeaVaultJediV2 {
 
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent);
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -143,6 +146,8 @@ mod TeaVaultJediV2 {
 
     impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
+    impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
     impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
     impl ERC20InternalImpl = ERC20Component::InternalImpl<ContractState>;
 
@@ -192,6 +197,8 @@ mod TeaVaultJediV2 {
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
         #[substorage(v0)]
+        pausable: PausableComponent::Storage,
+        #[substorage(v0)]
         reentrancy_guard: ReentrancyGuardComponent::Storage,
         #[substorage(v0)]
         erc20: ERC20Component::Storage
@@ -215,6 +222,8 @@ mod TeaVaultJediV2 {
         UpgradeableEvent: UpgradeableComponent::Event,
         #[flat]
         OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        PausableEvent: PausableComponent::Event,
         #[flat]
         ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         #[flat]
@@ -566,6 +575,7 @@ mod TeaVaultJediV2 {
         }
 
         fn deposit(ref self: ContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256) {
+            self.pausable.assert_not_paused();
             self.reentrancy_guard.start();
             assert(shares != 0, Errors::INVALID_SHARE_AMOUNT);
             self._collect_management_fee();
@@ -655,6 +665,7 @@ mod TeaVaultJediV2 {
         }
 
         fn withdraw(ref self: ContractState, mut shares: u256, amount0_min: u256, amount1_min: u256) -> (u256, u256) {
+            self.pausable.assert_not_paused();
             self.reentrancy_guard.start();
             assert(shares != 0, Errors::INVALID_SHARE_AMOUNT);
             self._collect_management_fee();
@@ -1003,6 +1014,16 @@ mod TeaVaultJediV2 {
             else {
                 pay(self.token1.read(), get_contract_address(), caller, amount_to_pay);
             }
+        }
+
+        fn pause(ref self: ContractState) {
+            self.ownable.assert_only_owner();
+            self.pausable._pause();
+        }
+
+        fn unpause(ref self: ContractState) {
+            self.ownable.assert_only_owner();
+            self.pausable._unpause();
         }
     }
 
