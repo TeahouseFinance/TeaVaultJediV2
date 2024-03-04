@@ -27,6 +27,18 @@ struct SwapCallbackData {
     zero_for_one: bool
 }
 
+#[derive(PartialEq, Drop, Serde, starknet::Store)]
+enum CallbackStatus {
+    Initial,
+    Calling
+}
+
+mod Constants {
+    const SECONDS_IN_A_YEAR: u256 = consteval_int!(365 * 24 * 60 * 60);
+    const FEE_MULTIPLIER: u256 = consteval_int!(1000000);
+    const MAX_POSITION_LENGTH: u8 = consteval_int!(5);
+}
+
 mod Errors {
     const POOL_NOT_INITIALIZED: felt252 = 'Pool is not initialized';
     const INVALID_FEE_CAP: felt252 = 'Invalid fee cap';
@@ -51,9 +63,7 @@ mod Errors {
 
 #[starknet::interface]
 trait ITeaVaultJediV2<TContractState> {
-    fn SECONDS_IN_A_YEAR(self: @TContractState) -> u256;
     fn DECIMALS_MULTIPLIER(self: @TContractState) -> u256;
-    fn FEE_MULTIPLIER(self: @TContractState) -> u256;
     fn manager(self: @TContractState) -> ContractAddress;
     fn fee_config(self: @TContractState) -> FeeConfig;
     fn pool(self: @TContractState) -> ContractAddress;
@@ -92,9 +102,9 @@ trait ITeaVaultJediV2<TContractState> {
 
 #[starknet::contract]
 mod TeaVaultJediV2 {
-    use super::{ FeeConfig, Position, MintCallbackData, SwapCallbackData, Errors };
+    use super::{ FeeConfig, Position, MintCallbackData, SwapCallbackData, CallbackStatus, Constants, Errors };
     use starknet::{
-        contract_address::{ ContractAddress, ContractAddressZero },
+        contract_address::ContractAddress,
         info::get_block_number,
         ClassHash,
         get_block_timestamp,
@@ -123,7 +133,6 @@ mod TeaVaultJediV2 {
             get_liquidity_for_amounts,
             get_amounts_for_liquidity,
             position_info,
-            position_swap_fee,
             estimated_value_in_token0,
             estimated_value_in_token1
         }
@@ -176,11 +185,8 @@ mod TeaVaultJediV2 {
 
     #[storage]
     struct Storage {
-        SECONDS_IN_A_YEAR: u256,
         DECIMALS_MULTIPLIER: u256,
-        FEE_MULTIPLIER: u256,
         DECIMALS: u8,
-        MAX_POSITION_LENGTH: u8,
         FEE_CAP: u32,
         manager: ContractAddress,
         position_length: u8,
@@ -190,7 +196,7 @@ mod TeaVaultJediV2 {
         token0: ContractAddress,
         token1: ContractAddress,
         last_swap_block: u64,
-        callback_status: u8,
+        callback_status: CallbackStatus,
         last_collect_management_fee: u64,
         #[substorage(v0)]
         upgradeable: UpgradeableComponent::Storage,
@@ -352,12 +358,8 @@ mod TeaVaultJediV2 {
             Errors::INVALID_TOKEN_ORDER
         );
 
-        self.SECONDS_IN_A_YEAR.write(365 * 24 * 60 * 60);
         self.DECIMALS_MULTIPLIER.write(pow(10, decimal_offset.into()));
-        let FEE_MULTIPLIER: u256 = 1000000;
-        self.FEE_MULTIPLIER.write(FEE_MULTIPLIER);
-        self.MAX_POSITION_LENGTH.write(5);
-        assert(fee_cap < FEE_MULTIPLIER.try_into().unwrap(), Errors::INVALID_FEE_CAP);
+        assert(fee_cap < Constants::FEE_MULTIPLIER.try_into().unwrap(), Errors::INVALID_FEE_CAP);
         self.FEE_CAP.write(fee_cap);
         let factory_dispatcher = IJediSwapV2FactoryDispatcher { contract_address: factory };
         let pool = factory_dispatcher.get_pool(token0, token1, fee_tier);
@@ -366,7 +368,6 @@ mod TeaVaultJediV2 {
         self.token0.write(token0);
         self.token1.write(token1);
         self.DECIMALS.write(decimal_offset + ERC20ABIDispatcher { contract_address: token0 }.decimals());
-        self.callback_status.write(1);  
         self._set_fee_config(fee_config);
 
         self.emit(TeaVaultV3PairCreated { tea_vault_address: get_contract_address() });
@@ -374,16 +375,8 @@ mod TeaVaultJediV2 {
 
     #[abi(embed_v0)]
     impl TeaVaultJediV2Impl of super::ITeaVaultJediV2<ContractState> {
-        fn SECONDS_IN_A_YEAR(self: @ContractState) -> u256 {
-            self.SECONDS_IN_A_YEAR.read()
-        }
-
         fn DECIMALS_MULTIPLIER(self: @ContractState) -> u256 {
             self.DECIMALS_MULTIPLIER.read()
-        }
-
-        fn FEE_MULTIPLIER(self: @ContractState) -> u256 {
-            self.FEE_MULTIPLIER.read()
         }
 
         fn manager(self: @ContractState) -> ContractAddress {
@@ -633,12 +626,11 @@ mod TeaVaultJediV2 {
             // collect entry fee for users
             // do not collect entry fee for fee recipient
             let fee_config = self.fee_config.read();
-            let FEE_MULTIPLIER = self.FEE_MULTIPLIER.read();
             let mut entry_fee_amount0 = 0;
             let mut entry_fee_amount1 = 0;
             if caller != fee_config.treasury {
-                entry_fee_amount0 = mul_div_rounding_up(deposited_amount0, fee_config.entry_fee.into(), FEE_MULTIPLIER);
-                entry_fee_amount1 = mul_div_rounding_up(deposited_amount1, fee_config.entry_fee.into(), FEE_MULTIPLIER);
+                entry_fee_amount0 = mul_div_rounding_up(deposited_amount0, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
+                entry_fee_amount1 = mul_div_rounding_up(deposited_amount1, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
                 if entry_fee_amount0 > 0 {
                     deposited_amount0 += entry_fee_amount0;
                     pay(token0, caller, fee_config.treasury, entry_fee_amount0);
@@ -672,7 +664,6 @@ mod TeaVaultJediV2 {
 
             let total_shares = self.erc20.total_supply();
             let fee_config = self.fee_config.read();
-            let FEE_MULTIPLIER = self.FEE_MULTIPLIER.read();
             let token0 = self.token0.read();
             let token1 = self.token1.read();
             let caller = get_caller_address();
@@ -680,7 +671,7 @@ mod TeaVaultJediV2 {
 
             let mut exit_fee_amount = 0;
             if caller != fee_config.treasury {
-                exit_fee_amount = mul_div_rounding_up(shares, fee_config.exit_fee.into(), FEE_MULTIPLIER);
+                exit_fee_amount = mul_div_rounding_up(shares, fee_config.exit_fee.into(), Constants::FEE_MULTIPLIER);
                 if exit_fee_amount > 0 {
                     self.erc20._transfer(caller, fee_config.treasury, exit_fee_amount);
                     shares -= exit_fee_amount;
@@ -777,7 +768,7 @@ mod TeaVaultJediV2 {
             };
 
             if !find {
-                assert(i < self.MAX_POSITION_LENGTH.read(), Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
+                assert(i < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
                 let (add0, add1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
                 amount0 = add0;
                 amount1 = add1;
@@ -884,7 +875,7 @@ mod TeaVaultJediV2 {
             self.reentrancy_guard.start();
             self._assert_only_manager();
             self._check_deadline(deadline);
-            self.callback_status.write(2);
+            self.callback_status.write(CallbackStatus::Calling);
 
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
             if min_price_in_sqrt_price_x96 == 0 {
@@ -912,7 +903,7 @@ mod TeaVaultJediV2 {
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
             self.last_swap_block.write(current_block);
-            self.callback_status.write(1);
+            self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_out
         }
@@ -931,7 +922,7 @@ mod TeaVaultJediV2 {
             self.reentrancy_guard.start();
             self._assert_only_manager();
             self._check_deadline(deadline);
-            self.callback_status.write(2);
+            self.callback_status.write(CallbackStatus::Calling);
 
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
             let zero_max_price_in_sqrt_price_x96 = max_price_in_sqrt_price_x96 == 0;
@@ -964,7 +955,7 @@ mod TeaVaultJediV2 {
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out});
             self.last_swap_block.write(current_block);
-            self.callback_status.write(1);
+            self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_in
         }
@@ -975,7 +966,7 @@ mod TeaVaultJediV2 {
             amount1_owed: u256,
             mut callback_data_span: Span<felt252>
         ) {
-            assert(self.callback_status.read() == 2, Errors::INVALID_CALLBACK_STATUS);
+            assert(self.callback_status.read() == CallbackStatus::Calling, Errors::INVALID_CALLBACK_STATUS);
             let caller = get_caller_address();
             assert(caller == self.pool.read(), Errors::INVALID_CALLBACK_CALLER);
             
@@ -994,7 +985,7 @@ mod TeaVaultJediV2 {
             amount1_delta: i256,
             mut callback_data_span: Span<felt252>
         ) {
-            assert(self.callback_status.read() == 2, Errors::INVALID_CALLBACK_STATUS);
+            assert(self.callback_status.read() == CallbackStatus::Calling, Errors::INVALID_CALLBACK_STATUS);
             let caller = get_caller_address();
             assert(caller == self.pool.read(), Errors::INVALID_CALLBACK_CALLER);
             let zero = IntegerTrait::<i256>::new(0, false);
@@ -1115,11 +1106,11 @@ mod TeaVaultJediV2 {
             callback_data: Array<felt252>
         ) -> (u256, u256) {
             self._check_liquidity(liquidity);
-            self.callback_status.write(2);
+            self.callback_status.write(CallbackStatus::Calling);
             let pool = self.pool.read();
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: pool };
             let (amount0, amount1) = pool_dispatcher.mint(get_contract_address(), tick_lower, tick_upper, liquidity, callback_data);
-            self.callback_status.write(1);
+            self.callback_status.write(CallbackStatus::Initial);
 
             self.emit(AddLiquidity {
                 pool: pool,
@@ -1174,7 +1165,7 @@ mod TeaVaultJediV2 {
             if time_diff > 0 {
                 let fee_config = self.fee_config.read();
                 let fee_times_time_diff: u256 = fee_config.management_fee.into() * time_diff.into();
-                let fee_multiplier_a_year: u256 = self.FEE_MULTIPLIER.read() * self.SECONDS_IN_A_YEAR.read();
+                let fee_multiplier_a_year: u256 = Constants::FEE_MULTIPLIER * Constants::SECONDS_IN_A_YEAR;
                 let mut denominator: u256 = if fee_multiplier_a_year > fee_times_time_diff {
                     fee_multiplier_a_year - fee_times_time_diff
                 }
@@ -1197,16 +1188,15 @@ mod TeaVaultJediV2 {
 
         fn _collect_performance_fee(ref self: ContractState, amount0: u128, amount1: u128) {
             let fee_config = self.fee_config.read();
-            let FEE_MULTIPLIER = self.FEE_MULTIPLIER.read();
             let performance_fee_amount0 = mul_div_rounding_up(
                 amount0.into(),
                 fee_config.performance_fee.into(),
-                FEE_MULTIPLIER
+                Constants::FEE_MULTIPLIER
             );
             let performance_fee_amount1 = mul_div_rounding_up(
                 amount1.into(),
                 fee_config.performance_fee.into(),
-                FEE_MULTIPLIER
+                Constants::FEE_MULTIPLIER
             );
             if performance_fee_amount0 > 0 {
                 pay(self.token0.read(), get_contract_address(), fee_config.treasury, performance_fee_amount0);

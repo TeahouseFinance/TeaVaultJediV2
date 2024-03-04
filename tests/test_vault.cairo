@@ -12,7 +12,8 @@ use jediswap_v2_core::{
 use tea_vault_jedi_v2::tea_vault_jedi_v2::{
     ITeaVaultJediV2Dispatcher,
     ITeaVaultJediV2DispatcherTrait,
-    FeeConfig
+    FeeConfig,
+    Constants
 };
 use snforge_std::{ declare, CheatTarget, ContractClassTrait, start_prank, stop_prank, start_roll, stop_roll, start_warp, stop_warp };
 
@@ -257,7 +258,7 @@ fn test_user_manager_functions_user_deposit_withdraw() {
 
     let withdraw_time = vault_dispatcher.last_collect_management_fee();
     let management_fee_x_time_diff: u256 = (fee_config.management_fee.into() * (withdraw_time - deposit_time)).into();
-    let denominator = vault_dispatcher.FEE_MULTIPLIER() * vault_dispatcher.SECONDS_IN_A_YEAR() - management_fee_x_time_diff;
+    let denominator = Constants::FEE_MULTIPLIER * Constants::SECONDS_IN_A_YEAR - management_fee_x_time_diff;
     let management_fee = (shares * management_fee_x_time_diff + denominator - 1) / denominator;
     
     let mut expected_amount0 = token0_amount * (total_supply - management_fee) / total_supply;
