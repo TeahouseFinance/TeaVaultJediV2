@@ -6,14 +6,12 @@ mod VaultUtils {
         jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait },
         libraries::{
             tick_math::TickMath::get_sqrt_ratio_at_tick,
+            sqrt_price_math::SqrtPriceMath::{ Q96, Q128 },
             position::{ PositionKey }
         }
     };
     use jediswap_v2_periphery::libraries::liquidity_amounts::LiquidityAmounts;
     use tea_vault_jedi_v2::tea_vault_jedi_v2::Position;
-
-    const q96: u256 = 0x1000000000000000000000000;
-    const q128: u256 = 0x100000000000000000000000000000000;
 
     fn get_liquidity_for_amounts(
         pool: ContractAddress,
@@ -66,7 +64,6 @@ mod VaultUtils {
             owner: account, tick_lower: position.tick_lower, tick_upper: position.tick_upper
         };
 
-        // todo: do we need to do some hash on position_key? no
         let position_info = pool_dispatcher.get_position_info(position_key);
         let (amount0, amount1) = LiquidityAmounts::get_amounts_for_liquidity(
             sqrt_price_x96,
@@ -126,7 +123,7 @@ mod VaultUtils {
         mul_div(
             fee_growth_inside_x128 - fee_growth_inside_last_x128,
             liquidity.into(),
-            q128
+            Q128
         )
     }
 
@@ -136,8 +133,8 @@ mod VaultUtils {
 
         amount0 + mul_div(
             amount1,
-            q96,
-            mul_div(sqrt_price_x96, sqrt_price_x96, q96)
+            Q96,
+            mul_div(sqrt_price_x96, sqrt_price_x96, Q96)
         )
     }
 
@@ -147,8 +144,8 @@ mod VaultUtils {
 
         amount1 + mul_div(
             amount0,
-            mul_div(sqrt_price_x96, sqrt_price_x96, q96),
-            q96
+            mul_div(sqrt_price_x96, sqrt_price_x96, Q96),
+            Q96
         )
     }
 }

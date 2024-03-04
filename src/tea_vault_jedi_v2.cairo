@@ -1,5 +1,4 @@
 use starknet::ContractAddress;
-
 use yas_core::numbers::signed_integer::{ i32::i32, i256::i256 };
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
@@ -99,12 +98,11 @@ mod TeaVaultJediV2 {
         get_contract_address,
         contract_address_to_felt252
     };
-    use core::integer::u256_from_felt252;
+    use core::integer::{ u256_from_felt252, BoundedU128 };
     use yas_core::numbers::signed_integer::{ i32::i32, i256::i256, integer_trait::IntegerTrait };
     use yas_core::utils::math_utils::{ FullMath::{ mul_div, mul_div_rounding_up }, pow };
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
-    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::security::ReentrancyGuardComponent;
     use openzeppelin::token::erc20::{
         ERC20Component,
@@ -115,13 +113,16 @@ mod TeaVaultJediV2 {
     use jediswap_v2_core::jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait };
     use jediswap_v2_core::libraries::tick_math::TickMath;
     use jediswap_v2_periphery::libraries::periphery_payments::PeripheryPayments::pay;
-    use tea_vault_jedi_v2::libraries::vault_utils::VaultUtils::{
-        get_liquidity_for_amounts,
-        get_amounts_for_liquidity,
-        position_info,
-        position_swap_fee,
-        estimated_value_in_token0,
-        estimated_value_in_token1
+    use tea_vault_jedi_v2::libraries::{
+        ownable::OwnableComponent,
+        vault_utils::VaultUtils::{
+            get_liquidity_for_amounts,
+            get_amounts_for_liquidity,
+            position_info,
+            position_swap_fee,
+            estimated_value_in_token0,
+            estimated_value_in_token1
+        }
     };
 
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
@@ -130,9 +131,9 @@ mod TeaVaultJediV2 {
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
     #[abi(embed_v0)]
-    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
+    impl OwnableTwoStepImpl = OwnableComponent::OwnableTwoStepImpl<ContractState>;
     #[abi(embed_v0)]
-    impl OwnableCamelOnlyImpl = OwnableComponent::OwnableCamelOnlyImpl<ContractState>;
+    impl OwnableCamelOnlyImpl = OwnableComponent::OwnableTwoStepCamelOnlyImpl<ContractState>;
     #[abi(embed_v0)]
     impl ERC20Impl = ERC20Component::ERC20Impl<ContractState>;
     #[abi(embed_v0)]
@@ -334,8 +335,6 @@ mod TeaVaultJediV2 {
         self.ownable.initializer(owner);
         self.erc20.initializer(name, symbol);
 
-        // todo: do we need initializer for reentrancy_guard? no
-        // todo: check token0 < token1 for INVALID_TOKEN_ORDER? fixed
         assert(
             u256_from_felt252(contract_address_to_felt252(token0)) < u256_from_felt252(contract_address_to_felt252(token1)),
             Errors::INVALID_TOKEN_ORDER
@@ -616,7 +615,6 @@ mod TeaVaultJediV2 {
                 }
             }
 
-            // todo: should be || ? The condition should be either amount is non zero -- fixed
             assert(deposited_amount0 != 0 || deposited_amount1 != 0, Errors::INVALID_SHARE_AMOUNT);
 
             // collect entry fee for users
@@ -715,7 +713,6 @@ mod TeaVaultJediV2 {
                 }
             };
             // slippage check
-            // todo: withdrawn_amount1 should be withdrawn_amount1 >= amount1_min -- fixed
             assert((withdrawn_amount0 >= amount0_min) && (withdrawn_amount1 >= amount1_min), Errors::INVALID_PRICE_SLIPPAGE);
 
             pay(token0, this, caller, withdrawn_amount0);
@@ -960,8 +957,6 @@ mod TeaVaultJediV2 {
             let caller = get_caller_address();
             assert(caller == self.pool.read(), Errors::INVALID_CALLBACK_CALLER);
             
-            // todo: do we need to handle cases where decoded_data.payer == address(0)? no
-            
             let decoded_data = Serde::<MintCallbackData>::deserialize(ref callback_data_span).unwrap();
             if amount0_owed > 0 {
                 pay(self.token0.read(), decoded_data.payer, caller, amount0_owed);
@@ -1123,14 +1118,13 @@ mod TeaVaultJediV2 {
         }
 
         fn _collect(ref self: ContractState, tick_lower: i32, tick_upper: i32) -> (u128, u128) {
-            let u128_max = 0xffffffffffffffffffffffffffffffff;
             let pool = self.pool.read();
             let (amount0, amount1) = IJediSwapV2PoolDispatcher { contract_address: pool }.collect(
                 get_contract_address(),
                 tick_lower,
                 tick_upper,
-                u128_max,
-                u128_max
+                BoundedU128::max(),
+                BoundedU128::max()
             );
 
             self.emit(Collect {
@@ -1204,14 +1198,6 @@ mod TeaVaultJediV2 {
             dispatcher.balance_of(get_contract_address())
         }
 
-        fn _remove_position(ref self: ContractState, index: u8) {
-            let position_length = self.position_length.read();
-            assert(index < position_length, Errors::INVALID_INDEX);
-
-            self.positions.write(index, self.positions.read(position_length - 1));
-            self.position_length.write(position_length - 1);
-        }
-
         fn assert_only_manager(self: @ContractState) {
             assert(get_caller_address() == self.manager.read(), Errors::CALLER_IS_NOT_MANAGER);
         }
@@ -1221,7 +1207,6 @@ mod TeaVaultJediV2 {
         }
 
         fn check_deadline(self: @ContractState, deadline: u64) {
-            // todo: should be deadline >= get_block_timestamp()
             assert(deadline >= get_block_timestamp(), Errors::TRANSACTION_EXPIRED);
         }
     }
