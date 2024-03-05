@@ -1042,18 +1042,21 @@ mod TeaVaultJediV2 {
             self.fee_config.write(fee_config);
             self.emit(FeeConfigChanged { sender: get_caller_address(), timestamp: get_block_timestamp(), fee_config: fee_config });
         }
-
-        fn _collect_position_swap_fee(ref self: ContractState, position: Position) -> (u128, u128) {
+        
+        fn _position_burn0_and_collect_from_pool(ref self: ContractState, position: Position) -> (u128, u128) {
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
             pool_dispatcher.burn(position.tick_lower, position.tick_upper, 0);
-            let (amount0, amount1) = self._collect(position.tick_lower, position.tick_upper);
+            self._collect(position.tick_lower, position.tick_upper)
+        }
+
+        fn _collect_position_swap_fee(ref self: ContractState, position: Position) -> (u128, u128) {
+            let (amount0, amount1) = self._position_burn0_and_collect_from_pool(position);
             self._collect_performance_fee(amount0, amount1);
 
             (amount0, amount1)
         }
 
         fn _collect_all_swap_fee(ref self: ContractState) -> (u128, u128) {
-            let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
             let position_length = self.position_length.read();
             let mut total0 = 0;
             let mut total1 = 0;
@@ -1064,8 +1067,7 @@ mod TeaVaultJediV2 {
                 }
 
                 let position = self.positions.read(i);
-                pool_dispatcher.burn(position.tick_lower, position.tick_upper, 0);
-                let (amount0, amount1) = self._collect(position.tick_lower, position.tick_upper);
+                let (amount0, amount1) = self._position_burn0_and_collect_from_pool(position);
                 total0 += amount0;
                 total1 += amount1;
 
