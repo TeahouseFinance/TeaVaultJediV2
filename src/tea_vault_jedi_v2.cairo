@@ -27,6 +27,12 @@ struct SwapCallbackData {
     zero_for_one: bool
 }
 
+#[derive(Drop)]
+enum Rounding {
+    Ceiling,
+    Floor
+}
+
 #[derive(PartialEq, Drop, Serde, starknet::Store)]
 enum CallbackStatus {
     Initial,
@@ -102,7 +108,7 @@ trait ITeaVaultJediV2<TContractState> {
 
 #[starknet::contract]
 mod TeaVaultJediV2 {
-    use super::{ FeeConfig, Position, MintCallbackData, SwapCallbackData, CallbackStatus, Constants, Errors };
+    use super::{ FeeConfig, Position, MintCallbackData, SwapCallbackData, Rounding, CallbackStatus, Constants, Errors };
     use starknet::{
         contract_address::ContractAddress,
         info::get_block_number,
@@ -592,7 +598,12 @@ mod TeaVaultJediV2 {
                     }
 
                     let mut position = self.positions.read(i);
-                    let liquidity = mul_div_rounding_up(position.liquidity.into(), shares, total_shares).try_into().unwrap();
+                    let liquidity = self._fraction_of_shares(
+                        position.liquidity.into(),
+                        shares,
+                        total_shares,
+                        Rounding::Ceiling
+                    ).try_into().unwrap();
                     let (amount0, amount1) = self._add_liquidity_with_callback_data(
                         position.tick_lower,
                         position.tick_upper,
@@ -606,8 +617,8 @@ mod TeaVaultJediV2 {
 
                     i += 1;
                 };
-                let amount0 = mul_div_rounding_up(self._get_token_balance(token0), shares, total_shares);
-                let amount1 = mul_div_rounding_up(self._get_token_balance(token1), shares, total_shares);
+                let amount0 = self._fraction_of_shares(self._get_token_balance(token0), shares, total_shares, Rounding::Ceiling);
+                let amount1 = self._fraction_of_shares(self._get_token_balance(token1), shares, total_shares, Rounding::Ceiling);
                 if amount0 > 0 {
                     deposited_amount0 += amount0;
                     pay(token0, caller, this, amount0);
@@ -626,8 +637,8 @@ mod TeaVaultJediV2 {
             let mut entry_fee_amount1 = 0;
             if caller != self.fee_config.read().treasury {
                 let fee_config = self.fee_config.read();
-                entry_fee_amount0 = mul_div_rounding_up(deposited_amount0, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
-                entry_fee_amount1 = mul_div_rounding_up(deposited_amount1, fee_config.entry_fee.into(), Constants::FEE_MULTIPLIER);
+                entry_fee_amount0 = self._fraction_of_fees(deposited_amount0, fee_config.entry_fee);
+                entry_fee_amount1 = self._fraction_of_fees(deposited_amount1, fee_config.entry_fee);
                 if entry_fee_amount0 > 0 {
                     deposited_amount0 += entry_fee_amount0;
                     pay(token0, caller, fee_config.treasury, entry_fee_amount0);
@@ -668,7 +679,7 @@ mod TeaVaultJediV2 {
 
             let mut exit_fee_amount = 0;
             if caller != fee_config.treasury {
-                exit_fee_amount = mul_div_rounding_up(shares, fee_config.exit_fee.into(), Constants::FEE_MULTIPLIER);
+                exit_fee_amount = self._fraction_of_fees(shares, fee_config.exit_fee);
                 if exit_fee_amount > 0 {
                     self.erc20._transfer(caller, fee_config.treasury, exit_fee_amount);
                     shares -= exit_fee_amount;
@@ -677,8 +688,18 @@ mod TeaVaultJediV2 {
             self.erc20._burn(caller, shares);
 
             self._collect_all_swap_fee();
-            let mut withdrawn_amount0 = mul_div(self._get_token_balance(token0), shares, total_shares);
-            let mut withdrawn_amount1 = mul_div(self._get_token_balance(token1), shares, total_shares);
+            let mut withdrawn_amount0 = self._fraction_of_shares(
+                self._get_token_balance(token0),
+                shares,
+                total_shares,
+                Rounding::Floor
+            );
+            let mut withdrawn_amount1 = self._fraction_of_shares(
+                self._get_token_balance(token1),
+                shares,
+                total_shares,
+                Rounding::Floor
+            );
             let position_length = self.position_length.read();
             let mut i: u8 = 0;
             loop {
@@ -687,7 +708,12 @@ mod TeaVaultJediV2 {
                 }
 
                 let mut position = self.positions.read(i);
-                let liquidity: u128 = mul_div(position.liquidity.into(), shares, total_shares).try_into().unwrap();
+                let liquidity: u128 = self._fraction_of_shares(
+                    position.liquidity.into(),
+                    shares,
+                    total_shares,
+                    Rounding::Floor
+                ).try_into().unwrap();
                 let (amount0, amount1) = self._remove_liquidity(position.tick_lower, position.tick_upper, liquidity);
                 self._collect(position.tick_lower, position.tick_upper);
                 withdrawn_amount0 += amount0;
@@ -1175,16 +1201,8 @@ mod TeaVaultJediV2 {
 
         fn _collect_performance_fee(ref self: ContractState, amount0: u128, amount1: u128) {
             let fee_config = self.fee_config.read();
-            let performance_fee_amount0 = mul_div_rounding_up(
-                amount0.into(),
-                fee_config.performance_fee.into(),
-                Constants::FEE_MULTIPLIER
-            );
-            let performance_fee_amount1 = mul_div_rounding_up(
-                amount1.into(),
-                fee_config.performance_fee.into(),
-                Constants::FEE_MULTIPLIER
-            );
+            let performance_fee_amount0 = self._fraction_of_fees(amount0.into(), fee_config.performance_fee);
+            let performance_fee_amount1 = self._fraction_of_fees(amount1.into(), fee_config.performance_fee);
             if performance_fee_amount0 > 0 {
                 pay(self.token0.read(), get_contract_address(), fee_config.treasury, performance_fee_amount0);
             }
@@ -1199,6 +1217,23 @@ mod TeaVaultJediV2 {
                 fee_amount0: performance_fee_amount0,
                 fee_amount1: performance_fee_amount1
             });
+        }
+
+        fn _fraction_of_shares(
+            self: @ContractState,
+            total_assets: u256,
+            shares: u256,
+            total_shares: u256,
+            rounding: Rounding
+        ) -> u256 {
+            match rounding {
+                Rounding::Ceiling => mul_div_rounding_up(total_assets, shares, total_shares),
+                Rounding::Floor => mul_div(total_assets, shares, total_shares)
+            }
+        }
+
+        fn _fraction_of_fees(self: @ContractState, base_amount: u256, fee: u32) -> u256 {
+            mul_div_rounding_up(base_amount, fee.into(), Constants::FEE_MULTIPLIER)
         }
 
         fn _get_token_balance(self: @ContractState, token: ContractAddress) -> u256 {
