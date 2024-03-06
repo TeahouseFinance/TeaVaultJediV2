@@ -3,39 +3,53 @@ use yas_core::numbers::signed_integer::{ i32::i32, i256::i256 };
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 struct FeeConfig {
+    /// /// @notice The fee will be sent to this address
     treasury: ContractAddress,
+    /// @notice The entry fee in 0.01 bps
     entry_fee: u32,
+    /// @notice The exit fee in 0.01 bps
     exit_fee: u32,
+    /// @notice The performance fee in 0.01 bps
     performance_fee: u32,
+    /// @notice The annual management fee in 0.01 bps
     management_fee: u32
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 struct Position {
+    /// @notice The lower tick of the position's tick range
     tick_lower: i32,
+    /// @notice The upper tick of the position's tick range
     tick_upper: i32,
+    /// @notice The owner of the position
     liquidity: u128
 }
 
 #[derive(Copy, Drop, Serde)]
 struct MintCallbackData {
+    /// @notice The payer for adding liquidity
     payer: ContractAddress
 }
 
 #[derive(Copy, Drop, Serde)]
 struct SwapCallbackData {
+    /// @notice The swap direction
     zero_for_one: bool
 }
 
 #[derive(Drop)]
 enum Rounding {
+    /// @notice Rounding up while performing mul_div
     Ceiling,
+    /// @notice Rounding down while performing mul_div
     Floor
 }
 
 #[derive(PartialEq, Drop, Serde, starknet::Store)]
 enum CallbackStatus {
+    /// @notice The initial status of the callback status
     Initial,
+    /// @notice The callback functions ready for being called
     Calling
 }
 
@@ -401,22 +415,35 @@ mod TeaVaultJediV2 {
             self.last_collect_management_fee.read()
         }
 
+        /// @notice Get asset token0 address
+        /// @return token0 Token0 address
         fn asset_token0(self: @ContractState) -> ContractAddress {
             self.token0.read()
         }
 
+        /// @notice Get asset token1 address
+        /// @return token1 Token1 address
         fn asset_token1(self: @ContractState) -> ContractAddress {
             self.token1.read()
         }
 
+        /// @notice Get vault balance of token0
+        /// @return amount Vault balance of token0
         fn get_token0_balance(self: @ContractState) -> u256 {
             self._get_token_balance(self.token0.read())
         }
 
+        /// @notice Get vault balance of token1
+        /// @return amount Vault balance of token1
         fn get_token1_balance(self: @ContractState) -> u256 {
             self._get_token_balance(self.token1.read())
         }
 
+        /// @notice Get pool token info
+        /// @return token0 Token0 address
+        /// @return token1 Token1 address
+        /// @return decimals0 Token0 decimals
+        /// @return decimals1 Token1 decimals
         fn get_pool_tokens(self: @ContractState) -> (ContractAddress, ContractAddress, u8, u8) {
             let token0 = self.token0.read();
             let token1 = self.token1.read();
@@ -431,12 +458,23 @@ mod TeaVaultJediV2 {
             )
         }
 
+        /// @notice Get pool price info
+        /// @return fee_tier current pool fee tier
+        /// @return sqrt_price_X96 Current pool price in sqrt_price_X96
+        /// @return tick Current pool price in tick
         fn get_pool_info(self: @ContractState) -> (u32, u256, i32) {
             let pool_dispatcher = IJediSwapV2PoolDispatcher { contract_address: self.pool.read() };
 
             (pool_dispatcher.get_fee(), pool_dispatcher.get_sqrt_price_X96(), pool_dispatcher.get_tick())
         }
 
+        /// @notice Get position info by specifying tickLower and tickUpper of the position
+        /// @param tick_lower Tick lower bound
+        /// @param tick_upper Tick upper bound
+        /// @return amount0 Current position token0 amount
+        /// @return amount1 Current position token1 amount
+        /// @return fee0 Pending fee token0 amount
+        /// @return fee1 Pending fee token1 amount
         fn position_info_ticks(self: @ContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256) {
             let positions = self.positions.read();
             let (_, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
@@ -444,6 +482,12 @@ mod TeaVaultJediV2 {
             position_info(get_contract_address(), self.pool.read(), position)
         }
         
+        /// @notice Get position info by specifying position index
+        /// @param index Position index
+        /// @return amount0 Current position token0 amount
+        /// @return amount1 Current position token1 amount
+        /// @return fee0 Pending fee token0 amount
+        /// @return fee1 Pending fee token1 amount        
         fn position_info_index(self: @ContractState, index: u32) -> (u256, u256, u256, u256) {
             let positions = self.positions.read();
             assert(index < positions.len(), Errors::POSITION_DOES_NOT_EXIST);
@@ -451,6 +495,11 @@ mod TeaVaultJediV2 {
             position_info(get_contract_address(), self.pool.read(), positions[index])
         }
 
+        /// @notice Get all position info
+        /// @return amount0 All positions token0 amount
+        /// @return amount1 All positions token1 amount
+        /// @return fee0 All positions pending fee token0 amount
+        /// @return fee1 All positions pending fee token1 amount
         fn all_position_info(self: @ContractState) -> (u256, u256, u256, u256) {
             let mut total_amount0 = 0;
             let mut total_amount1 = 0;
@@ -477,6 +526,9 @@ mod TeaVaultJediV2 {
             (total_amount0, total_amount1, total_fee0, total_fee1)
         }
 
+        /// @notice Get underlying assets hold by this vault
+        /// @return amount0 Total token0 amount
+        /// @return amount1 Total token1 amount
         fn vault_all_underlying_assets(self: @ContractState) -> (u256, u256) {
             let (mut amount0, mut amount1, fee0, fee1) = self.all_position_info();
             amount0 += (fee0 + self._get_token_balance(self.token0.read()));
@@ -485,18 +537,28 @@ mod TeaVaultJediV2 {
             (amount0, amount1)
         }
 
+        /// @notice Get vault value in token0
+        /// @return value0 The total value held by the vault in token0
         fn estimated_value_in_token0(self: @ContractState) -> u256 {
             let (amount0, amount1) = self.vault_all_underlying_assets();
 
             estimated_value_in_token0(self.pool.read(), amount0, amount1)
         }
 
+        /// @notice Get vault value in token1
+        /// @return value0 The total value held by the vault in token1
         fn estimated_value_in_token1(self: @ContractState) -> u256 {
             let (amount0, amount1) = self.vault_all_underlying_assets();
 
             estimated_value_in_token1(self.pool.read(), amount0, amount1)
         }
 
+        /// @notice Calculate liquidity of a position from amount0 and amount1
+        /// @param tickLower The lower tick of the position
+        /// @param tickUpper The upper tick of the position
+        /// @param amount0 The amount of token0
+        /// @param amount1 The amount of token1
+        /// @return liquidity Calculated liquidity
         fn get_liquidity_for_amounts(
             self: @ContractState,
             tick_lower: i32,
@@ -507,6 +569,12 @@ mod TeaVaultJediV2 {
             get_liquidity_for_amounts(self.pool.read(), tick_lower, tick_upper, amount0, amount1)
         }
 
+        /// @notice Calculate amount of tokens required for liquidity of a position
+        /// @param tickLower The lower tick of the position
+        /// @param tickUpper The upper tick of the position
+        /// @param liquidity The amount of liquidity
+        /// @return amount0 The amount of token0 required
+        /// @return amount1 The amount of token1 required
         fn get_amounts_for_liquidity(
             self: @ContractState,
             tick_lower: i32,
@@ -516,6 +584,8 @@ mod TeaVaultJediV2 {
             get_amounts_for_liquidity(self.pool.read(), tick_lower, tick_upper, liquidity)
         }
 
+        /// @notice Get all open positions
+        /// @return results Array of all holding positions
         fn get_all_positions(self: @ContractState) -> Array<Position> {
             let mut all_positions: Array<Position> = ArrayTrait::new();
             let positions = self.positions.read();
@@ -533,6 +603,9 @@ mod TeaVaultJediV2 {
             all_positions
         }
 
+        /// @notice Set fee structure and treasury addresses
+        /// @notice Only available to admins
+        /// @param fee_config Fee structure to be set
         fn set_fee_config(ref self: ContractState, fee_config: FeeConfig) {
             self.reentrancy_guard.start();
             self.ownable.assert_only_owner();
@@ -543,6 +616,9 @@ mod TeaVaultJediV2 {
             self.reentrancy_guard.end();
         }
 
+        /// @notice Assign fund manager
+        /// @notice Only the owner can do this
+        /// @param manager Fund manager address
         fn assign_manager(ref self: ContractState, manager: ContractAddress) {
             self.ownable.assert_only_owner();
 
@@ -550,6 +626,9 @@ mod TeaVaultJediV2 {
             self.emit(ManagerChanged { sender: get_caller_address(), new_manager: manager });
         }
 
+        /// @notice Collect management fee by inflating the share token
+        /// @notice Only fund manager can do this
+        /// @return collected_shares Share amount collected by minting
         fn collect_management_fee(ref self: ContractState) -> u256 {
             self.reentrancy_guard.start();
             self._assert_only_manager();
@@ -559,6 +638,12 @@ mod TeaVaultJediV2 {
             fee_amount
         }
 
+        /// @notice Mint shares and deposit token0 and token1
+        /// @param shares Share amount to be mint
+        /// @param amount0_max Max token0 amount to be deposited
+        /// @param amount1_max Max token1 amount to be deposited
+        /// @return deposited0 Deposited token0 amount
+        /// @return deposited1 Deposited token1 amount
         fn deposit(ref self: ContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256) {
             self.pausable.assert_not_paused();
             self.reentrancy_guard.start();
@@ -653,6 +738,12 @@ mod TeaVaultJediV2 {
             (deposited_amount0, deposited_amount1)
         }
 
+        /// @notice Burn shares and withdraw token0 and token1
+        /// @param shares Share amount to be burnt
+        /// @param amount0_min Min token0 amount to be withdrawn
+        /// @param amount1_min Min token1 amount to be withdrawn
+        /// @return withdrawn0 Withdrawn token0 amount
+        /// @return withdrawn1 Withdrawn token1 amount
         fn withdraw(ref self: ContractState, mut shares: u256, amount0_min: u256, amount1_min: u256) -> (u256, u256) {
             self.pausable.assert_not_paused();
             self.reentrancy_guard.start();
@@ -746,6 +837,16 @@ mod TeaVaultJediV2 {
             (withdrawn_amount0, withdrawn_amount1)
         }
 
+        /// @notice Add liquidity to a position from this vault
+        /// @notice Only fund manager can do this
+        /// @param tick_lower Tick lower bound
+        /// @param tick_upper Tick upper bound
+        /// @param liquidity Liquidity to be added to the position
+        /// @param amount0_min Minimum token0 amount to be added to the position
+        /// @param amount1_min Minimum token1 amount to be added to the position
+        /// @param deadline Deadline of the transaction, transaction will revert if after this timestamp
+        /// @return amount0 Token0 amount added to the position
+        /// @return amount1 Token1 amount added to the position
         fn add_liquidity(
             ref self: ContractState,
             tick_lower: i32,
@@ -777,6 +878,16 @@ mod TeaVaultJediV2 {
             (amount0, amount1)
         }
 
+        /// @notice Remove liquidity of a position from this vault
+        /// @notice Only fund manager can do this
+        /// @param tick_lower Tick lower bound
+        /// @param tick_upper Tick upper bound
+        /// @param liquidity Liquidity to be removed from the position
+        /// @param amount0_min Minimum token0 amount to be removed from the position
+        /// @param amount1_min Minimum token1 amount to be removed from the position
+        /// @param deadline Deadline of the transaction, transaction will revert if after this timestamp
+        /// @return amount0 Token0 amount removed from the position
+        /// @return amount1 Token1 amount removed from the position
         fn remove_liquidity(
             ref self: ContractState,
             tick_lower: i32,
@@ -809,6 +920,12 @@ mod TeaVaultJediV2 {
             (amount0, amount1)
         }
 
+        /// @notice Collect swap fee of a position
+        /// @notice Only fund manager can do this
+        /// @param tick_lower Tick lower bound
+        /// @param tick_upper Tick upper bound
+        /// @return amount0 Token0 amount collected from the position
+        /// @return amount1 Token1 amount collected from the position
         fn collect_position_swap_fee(ref self: ContractState, tick_lower: i32, tick_upper: i32) -> (u128, u128) {
             self.reentrancy_guard.start();
             self._assert_only_manager();
@@ -821,6 +938,10 @@ mod TeaVaultJediV2 {
             (amount0, amount1)
         }
 
+        /// @notice Collect swap fee of all positions
+        /// @notice Only fund manager can do this
+        /// @return amount0 Token0 amount collected from the positions
+        /// @return amount1 Token1 amount collected from the positions
         fn collect_all_swap_fee(ref self: ContractState) -> (u128, u128) {
             self.reentrancy_guard.start();
             self._assert_only_manager();
@@ -831,6 +952,14 @@ mod TeaVaultJediV2 {
             (amount0, amount1)
         }
 
+        /// @notice Swap tokens on the pool with exact input amount
+        /// @notice Only fund manager can do this
+        /// @param zero_for_one Swap direction from token0 to token1 or not
+        /// @param amount_in Amount of input token
+        /// @param amount_out_min Required minimum output token amount
+        /// @param min_price_in_sqrt_price_x96 Minimum acceptable price in sqrt_price_x96
+        /// @param deadline Deadline of the transaction, transaction will revert if after this timestamp
+        /// @return amount_out Output token amount
         fn swap_input_single(
             ref self: ContractState,
             zero_for_one: bool,
@@ -878,6 +1007,14 @@ mod TeaVaultJediV2 {
             amount_out
         }
 
+        /// @notice Swap tokens on the pool with exact output amount
+        /// @notice Only fund manager can do this
+        /// @param zero_for_one Swap direction from token0 to token1 or not
+        /// @param amount_out Output token amount
+        /// @param amount_in_max Required maximum input token amount
+        /// @param max_price_in_sqrt_price_x96 Maximum acceptable price in sqrtPriceX96
+        /// @param deadline Deadline of the transaction, transaction will revert if after this timestamp
+        /// @return amount_in Input token amount
         fn swap_output_single(
             ref self: ContractState,
             zero_for_one: bool,
