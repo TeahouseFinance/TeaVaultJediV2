@@ -24,36 +24,113 @@ snforge test
 
 ## Project Structure
 
-Place `JediSwap-v2-core` and `JediSwap-v2-periphery` beside `tea_vault_jedi_v2` (this repo).
-
 ```bash
-cd to tea_vault_jedi_v2 to compile project
+cd to tea_vault_jedi_v2
 .
-├── JediSwap-v2-core
-│   ├── CODE_OF_CONDUCT.md
-│   ├── CONTRIBUTING.md
-│   ├── LICENSE
-│   ├── README.md
-│   ├── Scarb.lock
-│   ├── Scarb.toml
-│   ├── scripts
-│   ├── src
-│   └── tests
-├── JediSwap-v2-periphery
-│   ├── CODE_OF_CONDUCT.md
-│   ├── CONTRIBUTING.md
-│   ├── LICENSE
-│   ├── README.md
-│   ├── Scarb.lock
-│   ├── Scarb.toml
-│   ├── scripts
-│   ├── src
-│   └── tests
-└── TeaVaultJediV2
-    ├── README.md
-    ├── Scarb.lock
-    ├── Scarb.toml
-    └── src
+├── README.md
+├── Scarb.lock
+├── Scarb.toml
+├── src
+│   ├── lib.cairo
+│   ├── libraries
+│   │   ├── ownable
+│   │   ├── ownable.cairo
+│   │   └── vault_utils.cairo
+│   └── tea_vault_jedi_v2.cairo
+├── target
+│   ├── CACHEDIR.TAG
+│   └── dev
+│       ├── snforge
+│       ├── tea_vault_jedi_v2.starknet_artifacts.json
+│       ├── tea_vault_jedi_v2_ERC20.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_ERC20.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Factory.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Factory.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2NFTPositionManager.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2NFTPositionManager.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Pool.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Pool.contract_class.json
+│       ├── tea_vault_jedi_v2_TeaVaultJediV2.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_TeaVaultJediV2.contract_class.json
+│       ├── tea_vault_jedi_v2_tests.test.json
+│       └── tea_vault_jedi_v2_unittest.test.json
+└── tests
+    ├── lib.cairo
+    ├── test_vault.cairo
+    └── utils.cairo
+
+7 directories, 24 files
+    ~/Doc/tea/j/TeaVaultJediV2    main !3  tree -L 2                                                                                             ✔  block   1300 Mbps   114.44.234.72  
+.
+├── README.md
+├── Scarb.lock
+├── Scarb.toml
+├── src
+│   ├── lib.cairo
+│   ├── libraries
+│   └── tea_vault_jedi_v2.cairo
+├── target
+│   ├── CACHEDIR.TAG
+│   └── dev
+└── tests
+    ├── lib.cairo
+    ├── test_vault.cairo
+    └── utils.cairo
+
+5 directories, 9 files
+    ~/Doc/tea/j/TeaVaultJediV2    main !3  tree -L 3                                                                                             ✔  block   1300 Mbps   114.44.234.72  
+.
+├── README.md
+├── Scarb.lock
+├── Scarb.toml
+├── src
+│   ├── lib.cairo
+│   ├── libraries
+│   │   ├── ownable
+│   │   ├── ownable.cairo
+│   │   └── vault_utils.cairo
+│   └── tea_vault_jedi_v2.cairo
+├── target
+│   ├── CACHEDIR.TAG
+│   └── dev
+│       ├── snforge
+│       ├── tea_vault_jedi_v2.starknet_artifacts.json
+│       ├── tea_vault_jedi_v2_ERC20.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_ERC20.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Factory.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Factory.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2NFTPositionManager.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2NFTPositionManager.contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Pool.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_JediSwapV2Pool.contract_class.json
+│       ├── tea_vault_jedi_v2_TeaVaultJediV2.compiled_contract_class.json
+│       ├── tea_vault_jedi_v2_TeaVaultJediV2.contract_class.json
+│       ├── tea_vault_jedi_v2_tests.test.json
+│       └── tea_vault_jedi_v2_unittest.test.json
+└── tests
+    ├── lib.cairo
+    ├── test_vault.cairo
+    └── utils.cairo
+
+7 directories, 24 files
+    ~/Doc/tea/j/TeaVaultJediV2    main !3  tree -L 4                                                                                             ✔  block   1300 Mbps   114.44.234.72  
+.
+├── README.md
+├── Scarb.lock
+├── Scarb.toml
+├── src
+│   ├── lib.cairo
+│   ├── libraries
+│   │   ├── ownable
+│   │   │   ├── interface.cairo
+│   │   │   └── ownable.cairo
+│   │   ├── ownable.cairo
+│   │   └── vault_utils.cairo
+│   └── tea_vault_jedi_v2.cairo
+└── tests
+    ├── lib.cairo
+    ├── test_vault.cairo
+    └── utils.cairo
 ```
 
 ## TODOs

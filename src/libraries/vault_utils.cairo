@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Teahouse Finance
+// libraries/vault_utils.cairo
+
 mod VaultUtils {
     use starknet::ContractAddress;
     use yas_core::numbers::signed_integer::{ i32::i32 };

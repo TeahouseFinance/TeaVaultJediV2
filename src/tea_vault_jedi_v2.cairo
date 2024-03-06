@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Teahouse Finance
+// tea_vault_jedi_v2.cairo
+
 use starknet::ContractAddress;
 use yas_core::numbers::signed_integer::{ i32::i32, i256::i256 };
 
