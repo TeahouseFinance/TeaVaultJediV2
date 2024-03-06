@@ -42,7 +42,7 @@ enum CallbackStatus {
 mod Constants {
     const SECONDS_IN_A_YEAR: u256 = consteval_int!(365 * 24 * 60 * 60);
     const FEE_MULTIPLIER: u256 = consteval_int!(1000000);
-    const MAX_POSITION_LENGTH: u8 = consteval_int!(5);
+    const MAX_POSITION_LENGTH: u32 = consteval_int!(5);
 }
 
 mod Errors {
@@ -81,7 +81,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn get_pool_tokens(self: @TContractState) -> (ContractAddress, ContractAddress, u8, u8);
     fn get_pool_info(self: @TContractState) -> (u32, u256, i32);
     fn position_info_ticks(self: @TContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256);
-    fn position_info_index(self: @TContractState, index: u8) -> (u256, u256, u256, u256);
+    fn position_info_index(self: @TContractState, index: u32) -> (u256, u256, u256, u256);
     fn all_position_info(self: @TContractState) -> (u256, u256, u256, u256);
     fn vault_all_underlying_assets(self: @TContractState) -> (u256, u256);
     fn estimated_value_in_token0(self: @TContractState) -> u256;
@@ -129,6 +129,7 @@ mod TeaVaultJediV2 {
         ERC20ABIDispatcher,
         interface::{ ERC20ABIDispatcherTrait, IERC20Metadata } 
     };
+    use alexandria_storage::list::{ List, ListTrait };
     use jediswap_v2_core::jediswap_v2_factory::{ IJediSwapV2FactoryDispatcher, IJediSwapV2FactoryDispatcherTrait };
     use jediswap_v2_core::jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait };
     use jediswap_v2_core::libraries::tick_math::TickMath;
@@ -195,8 +196,7 @@ mod TeaVaultJediV2 {
         DECIMALS: u8,
         FEE_CAP: u32,
         manager: ContractAddress,
-        position_length: u8,
-        positions: LegacyMap<u8, Position>,
+        positions: List<Position>,
         fee_config: FeeConfig,
         pool: ContractAddress,
         token0: ContractAddress,
@@ -438,14 +438,14 @@ mod TeaVaultJediV2 {
         }
 
         fn position_info_ticks(self: @ContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256) {
-            let position_length = self.position_length.read();
-            let mut i: u8 = 0;
+            let positions = self.positions.read();
+            let mut i: u32 = 0;
             let (amount0, amount1, fee0, fee1) = loop {
-                if i == position_length {
+                if i == positions.len() {
                     assert(false, Errors::POSITION_DOES_NOT_EXIST);
                 }
 
-                let position = self.positions.read(i);
+                let position: Position = positions[i];
                 if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
                     break position_info(get_contract_address(), self.pool.read(), position);
                 }
@@ -456,10 +456,11 @@ mod TeaVaultJediV2 {
             (amount0, amount1, fee0, fee1)
         }
         
-        fn position_info_index(self: @ContractState, index: u8) -> (u256, u256, u256, u256) {
-            assert(index < self.position_length.read(), Errors::POSITION_DOES_NOT_EXIST);
+        fn position_info_index(self: @ContractState, index: u32) -> (u256, u256, u256, u256) {
+            let positions = self.positions.read();
+            assert(index < positions.len(), Errors::POSITION_DOES_NOT_EXIST);
 
-            position_info(get_contract_address(), self.pool.read(), self.positions.read(index))
+            position_info(get_contract_address(), self.pool.read(), positions[index])
         }
 
         fn all_position_info(self: @ContractState) -> (u256, u256, u256, u256) {
@@ -467,16 +468,16 @@ mod TeaVaultJediV2 {
             let mut total_amount1 = 0;
             let mut total_fee0 = 0;
             let mut total_fee1 = 0;
-            let position_length = self.position_length.read();
+            let positions = self.positions.read();
             let this = get_contract_address();
             let pool = self.pool.read();
-            let mut i: u8 = 0;
+            let mut i: u32 = 0;
             loop {
-                if i == position_length {
+                if i == positions.len() {
                     break;
                 }
 
-                let (amount0, amount1, fee0, fee1) = position_info(this, pool, self.positions.read(i));
+                let (amount0, amount1, fee0, fee1) = position_info(this, pool, positions[i]);
                 total_amount0 += amount0;
                 total_amount1 += amount1;
                 total_fee0 += fee0;
@@ -529,14 +530,14 @@ mod TeaVaultJediV2 {
 
         fn get_all_positions(self: @ContractState) -> Array<Position> {
             let mut all_positions: Array<Position> = ArrayTrait::new();
-            let position_length = self.position_length.read();
-            let mut i: u8 = 0;
+            let positions = self.positions.read();
+            let mut i: u32 = 0;
             loop {
-                if i == position_length {
+                if i == positions.len() {
                     break;
                 }
 
-                all_positions.append(self.positions.read(i));
+                all_positions.append(positions[i]);
 
                 i += 1;
             };
@@ -590,14 +591,14 @@ mod TeaVaultJediV2 {
             }
             else {
                 self._collect_all_swap_fee();
-                let position_length = self.position_length.read();
-                let mut i: u8 = 0;
+                let mut positions = self.positions.read();
+                let mut i: u32 = 0;
                 loop {
-                    if i == position_length {
+                    if i == positions.len() {
                         break;
                     }
 
-                    let mut position = self.positions.read(i);
+                    let mut position = positions[i];
                     let liquidity = self._fraction_of_shares(
                         position.liquidity.into(),
                         shares,
@@ -613,7 +614,7 @@ mod TeaVaultJediV2 {
                     deposited_amount0 += amount0;
                     deposited_amount1 += amount1;
                     position.liquidity += liquidity;
-                    self.positions.write(i, position);
+                    positions.set(i, position);
 
                     i += 1;
                 };
@@ -700,14 +701,14 @@ mod TeaVaultJediV2 {
                 total_shares,
                 Rounding::Floor
             );
-            let position_length = self.position_length.read();
-            let mut i: u8 = 0;
+            let mut positions = self.positions.read();
+            let mut i: u32 = 0;
             loop {
-                if i == position_length {
+                if i == positions.len() {
                     break;
                 }
 
-                let mut position = self.positions.read(i);
+                let mut position = positions[i];
                 let liquidity: u128 = self._fraction_of_shares(
                     position.liquidity.into(),
                     shares,
@@ -720,21 +721,21 @@ mod TeaVaultJediV2 {
                 withdrawn_amount1 += amount1;
 
                 position.liquidity -= liquidity;
-                self.positions.write(i , position);
+                positions.set(i , position);
 
                 i += 1;
             };
 
             i = 0;
             loop {
-                let position_length = self.position_length.read();
-                if i == position_length {
+                let mut positions = self.positions.read();
+                if i == positions.len() {
                     break;
                 }
 
-                if self.positions.read(i).liquidity == 0 {
-                    self.positions.write(i, self.positions.read(position_length - 1));
-                    self.position_length.write(position_length - 1);
+                let position: Position = positions[i];
+                if position.liquidity == 0 {
+                    self._pop_position(ref positions, i);
                 }
                 else {
                     i += 1;
@@ -770,22 +771,21 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
             self._check_deadline(deadline);
 
-            let position_length = self.position_length.read();
-            let mut i: u8 = 0;
+            let mut positions = self.positions.read();
+            let mut i: u32 = 0;
             let (amount0, amount1) = loop {
-                if i == position_length {
+                if i == positions.len() {
                     assert(i < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
                     let (add0, add1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
-                    self.positions.write(i, Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
-                    self.position_length.write(position_length + 1);
+                    positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
                     break (add0, add1);
                 }
 
-                let mut position = self.positions.read(i);
+                let mut position: Position = positions[i];
                 if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
                     let (add0, add1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
                     position.liquidity += liquidity;
-                    self.positions.write(i, position);
+                    positions.set(i, position);
                     break (add0, add1);
                 }
 
@@ -809,14 +809,14 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
             self._check_deadline(deadline);
 
-            let position_length = self.position_length.read();
+            let mut positions = self.positions.read();
             let mut i = 0;
             let (amount0, amount1) = loop {
-                if i == position_length {
+                if i == positions.len() {
                     assert(false, Errors::POSITION_DOES_NOT_EXIST);
                 }
 
-                let mut position = self.positions.read(i);
+                let mut position: Position = positions[i];
                 if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
                     self._collect_position_swap_fee(position);
 
@@ -825,12 +825,11 @@ mod TeaVaultJediV2 {
                     self._collect(tick_lower, tick_upper);
 
                     if position.liquidity == liquidity {
-                        self.positions.write(i, self.positions.read(position_length - 1));
-                        self.position_length.write(position_length - 1);
+                        self._pop_position(ref positions, i);
                     }
                     else {
                         position.liquidity -= liquidity;
-                        self.positions.write(i, position);
+                        positions.set(i, position);
                     }
                     break (remove0, remove1);
                 }
@@ -846,14 +845,14 @@ mod TeaVaultJediV2 {
             self.reentrancy_guard.start();
             self._assert_only_manager();
 
-            let position_length = self.position_length.read();
+            let positions = self.positions.read();
             let mut i = 0;
             let (amount0, amount1) = loop {
-                if i == position_length {
+                if i == positions.len() {
                     assert(false, Errors::POSITION_DOES_NOT_EXIST);
                 }
 
-                let position = self.positions.read(i);
+                let position: Position = positions[i];
                 if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
                     break self._collect_position_swap_fee(position);
                 }
@@ -1057,16 +1056,16 @@ mod TeaVaultJediV2 {
         }
 
         fn _collect_all_swap_fee(ref self: ContractState) -> (u128, u128) {
-            let position_length = self.position_length.read();
+            let positions = self.positions.read();
             let mut total0 = 0;
             let mut total1 = 0;
-            let mut i: u8 = 0;
+            let mut i: u32 = 0;
             loop {
-                if i == position_length {
+                if i == positions.len() {
                     break;
                 }
 
-                let position = self.positions.read(i);
+                let position = positions[i];
                 let (amount0, amount1) = self._position_burn0_and_collect_from_pool(position);
                 total0 += amount0;
                 total1 += amount1;
@@ -1219,6 +1218,11 @@ mod TeaVaultJediV2 {
                 fee_amount0: performance_fee_amount0,
                 fee_amount1: performance_fee_amount1
             });
+        }
+
+        fn _pop_position(ref self: ContractState, ref positions: List<Position>, index: u32) {
+            positions.set(index, positions[positions.len() - 1]);
+            positions.pop_front();
         }
 
         fn _fraction_of_shares(
