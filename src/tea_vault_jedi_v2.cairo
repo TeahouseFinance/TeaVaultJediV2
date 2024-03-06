@@ -439,21 +439,9 @@ mod TeaVaultJediV2 {
 
         fn position_info_ticks(self: @ContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256) {
             let positions = self.positions.read();
-            let mut i: u32 = 0;
-            let (amount0, amount1, fee0, fee1) = loop {
-                if i == positions.len() {
-                    assert(false, Errors::POSITION_DOES_NOT_EXIST);
-                }
+            let (_, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
 
-                let position: Position = positions[i];
-                if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
-                    break position_info(get_contract_address(), self.pool.read(), position);
-                }
-
-                i += 1;
-            };
-
-            (amount0, amount1, fee0, fee1)
+            position_info(get_contract_address(), self.pool.read(), position)
         }
         
         fn position_info_index(self: @ContractState, index: u32) -> (u256, u256, u256, u256) {
@@ -471,7 +459,7 @@ mod TeaVaultJediV2 {
             let positions = self.positions.read();
             let this = get_contract_address();
             let pool = self.pool.read();
-            let mut i: u32 = 0;
+            let mut i = 0;
             loop {
                 if i == positions.len() {
                     break;
@@ -531,7 +519,7 @@ mod TeaVaultJediV2 {
         fn get_all_positions(self: @ContractState) -> Array<Position> {
             let mut all_positions: Array<Position> = ArrayTrait::new();
             let positions = self.positions.read();
-            let mut i: u32 = 0;
+            let mut i = 0;
             loop {
                 if i == positions.len() {
                     break;
@@ -592,7 +580,7 @@ mod TeaVaultJediV2 {
             else {
                 self._collect_all_swap_fee();
                 let mut positions = self.positions.read();
-                let mut i: u32 = 0;
+                let mut i = 0;
                 loop {
                     if i == positions.len() {
                         break;
@@ -702,7 +690,7 @@ mod TeaVaultJediV2 {
                 Rounding::Floor
             );
             let mut positions = self.positions.read();
-            let mut i: u32 = 0;
+            let mut i = 0;
             loop {
                 if i == positions.len() {
                     break;
@@ -772,25 +760,18 @@ mod TeaVaultJediV2 {
             self._check_deadline(deadline);
 
             let mut positions = self.positions.read();
-            let mut i: u32 = 0;
-            let (amount0, amount1) = loop {
-                if i == positions.len() {
-                    assert(i < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
-                    let (add0, add1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
-                    positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
-                    break (add0, add1);
-                }
+            let (found, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, false);
+            assert(found || positions.len() < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
 
+            let (amount0, amount1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
+            if found {
                 let mut position: Position = positions[i];
-                if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
-                    let (add0, add1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
-                    position.liquidity += liquidity;
-                    positions.set(i, position);
-                    break (add0, add1);
-                }
-
-                i += 1;
-            };
+                position.liquidity += liquidity;
+                positions.set(i, position);
+            }
+            else {
+                positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
+            }
 
             self.reentrancy_guard.end();
             (amount0, amount1)
@@ -810,32 +791,20 @@ mod TeaVaultJediV2 {
             self._check_deadline(deadline);
 
             let mut positions = self.positions.read();
-            let mut i = 0;
-            let (amount0, amount1) = loop {
-                if i == positions.len() {
-                    assert(false, Errors::POSITION_DOES_NOT_EXIST);
-                }
+            let (_, i, mut position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            self._collect_position_swap_fee(position);
 
-                let mut position: Position = positions[i];
-                if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
-                    self._collect_position_swap_fee(position);
-
-                    let (remove0, remove1) = self._remove_liquidity(tick_lower, tick_upper, liquidity);
-                    assert((remove0 >= amount0_min) && (remove1 >= amount1_min), Errors::INVALID_PRICE_SLIPPAGE);
-                    self._collect(tick_lower, tick_upper);
-
-                    if position.liquidity == liquidity {
-                        self._pop_position(ref positions, i);
-                    }
-                    else {
-                        position.liquidity -= liquidity;
-                        positions.set(i, position);
-                    }
-                    break (remove0, remove1);
-                }
-
-                i += 1;
-            };
+            let (amount0, amount1) = self._remove_liquidity(tick_lower, tick_upper, liquidity);
+            assert((amount0 >= amount0_min) && (amount1 >= amount1_min), Errors::INVALID_PRICE_SLIPPAGE);
+            self._collect(tick_lower, tick_upper);
+            
+            if position.liquidity == liquidity {
+                self._pop_position(ref positions, i);
+            }
+            else {
+                position.liquidity -= liquidity;
+                positions.set(i, position);
+            }
             
             self.reentrancy_guard.end();
             (amount0, amount1)
@@ -846,19 +815,8 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
 
             let positions = self.positions.read();
-            let mut i = 0;
-            let (amount0, amount1) = loop {
-                if i == positions.len() {
-                    assert(false, Errors::POSITION_DOES_NOT_EXIST);
-                }
-
-                let position: Position = positions[i];
-                if (position.tick_lower == tick_lower) && (position.tick_upper == tick_upper) {
-                    break self._collect_position_swap_fee(position);
-                }
-
-                i += 1;
-            };
+            let (_, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (amount0, amount1) = self._collect_position_swap_fee(position);
 
             self.reentrancy_guard.end();
             (amount0, amount1)
@@ -1059,7 +1017,7 @@ mod TeaVaultJediV2 {
             let positions = self.positions.read();
             let mut total0 = 0;
             let mut total1 = 0;
-            let mut i: u32 = 0;
+            let mut i = 0;
             loop {
                 if i == positions.len() {
                     break;
@@ -1218,6 +1176,33 @@ mod TeaVaultJediV2 {
                 fee_amount0: performance_fee_amount0,
                 fee_amount1: performance_fee_amount1
             });
+        }
+
+        fn _find_position_by_ticks(
+            self: @ContractState,
+            positions: @List<Position>,
+            tick_lower: i32,
+            tick_upper: i32,
+            asset_not_found: bool
+        ) -> (bool, u32, Position) {
+            let mut i = 0;
+            let mut found = false;
+            let position = loop {
+                if i == positions.len() {
+                    assert(!asset_not_found, Errors::POSITION_DOES_NOT_EXIST);
+                    break (Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: 0 });
+                }
+
+                let position_i: Position = positions[i];
+                if (position_i.tick_lower == tick_lower) && (position_i.tick_upper == tick_upper) {
+                    found = true;
+                    break position_i;
+                }
+
+                i += 1;
+            };
+
+            (found, i, position)
         }
 
         fn _pop_position(ref self: ContractState, ref positions: List<Position>, index: u32) {
