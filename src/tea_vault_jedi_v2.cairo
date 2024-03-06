@@ -763,7 +763,6 @@ mod TeaVaultJediV2 {
             let (found, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, false);
             assert(found || positions.len() < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
 
-            let (amount0, amount1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
             if found {
                 let mut position: Position = positions[i];
                 position.liquidity += liquidity;
@@ -772,6 +771,7 @@ mod TeaVaultJediV2 {
             else {
                 positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
             }
+            let (amount0, amount1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
 
             self.reentrancy_guard.end();
             (amount0, amount1)
@@ -792,11 +792,6 @@ mod TeaVaultJediV2 {
 
             let mut positions = self.positions.read();
             let (_, i, mut position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
-            self._collect_position_swap_fee(position);
-
-            let (amount0, amount1) = self._remove_liquidity(tick_lower, tick_upper, liquidity);
-            assert((amount0 >= amount0_min) && (amount1 >= amount1_min), Errors::INVALID_PRICE_SLIPPAGE);
-            self._collect(tick_lower, tick_upper);
             
             if position.liquidity == liquidity {
                 self._pop_position(ref positions, i);
@@ -805,6 +800,10 @@ mod TeaVaultJediV2 {
                 position.liquidity -= liquidity;
                 positions.set(i, position);
             }
+            self._collect_position_swap_fee(position);
+            let (amount0, amount1) = self._remove_liquidity(tick_lower, tick_upper, liquidity);
+            assert((amount0 >= amount0_min) && (amount1 >= amount1_min), Errors::INVALID_PRICE_SLIPPAGE);
+            self._collect(tick_lower, tick_upper);
             
             self.reentrancy_guard.end();
             (amount0, amount1)
@@ -827,6 +826,7 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
 
             let (amount0, amount1) = self._collect_all_swap_fee();
+            
             self.reentrancy_guard.end();
             (amount0, amount1)
         }
@@ -842,6 +842,7 @@ mod TeaVaultJediV2 {
             let current_block = get_block_number();
             let last_swap = self.last_swap_block.read();
             assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
+            self.last_swap_block.write(current_block);
             self.reentrancy_guard.start();
             self._assert_only_manager();
             self._check_deadline(deadline);
@@ -872,7 +873,6 @@ mod TeaVaultJediV2 {
             assert (amount_out >= amount_out_min, Errors::INVALID_PRICE_SLIPPAGE);
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
-            self.last_swap_block.write(current_block);
             self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_out
@@ -889,6 +889,7 @@ mod TeaVaultJediV2 {
             let current_block = get_block_number();
             let last_swap = self.last_swap_block.read();
             assert(current_block > last_swap, Errors::SWAP_RATE_LIMIT);
+            self.last_swap_block.write(current_block);
             self.reentrancy_guard.start();
             self._assert_only_manager();
             self._check_deadline(deadline);
@@ -924,7 +925,6 @@ mod TeaVaultJediV2 {
             assert (amount_in <= amount_in_max, Errors::INVALID_PRICE_SLIPPAGE);
 
             self.emit(Swap {zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out});
-            self.last_swap_block.write(current_block);
             self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_in
