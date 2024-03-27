@@ -83,6 +83,7 @@ mod Errors {
     const INSUFFICIENT_SWAP_RESULT: felt252 = 'Insufficient swap result';
     const INVALID_TOKEN_ORDER: felt252 = 'Invalid token order';
     const INVALID_INDEX: felt252 = 'Invalid index';
+    const INVALID_REWARD_TOKEN: felt252 = 'Invalid reward token';
 }
 
 #[starknet::interface]
@@ -120,6 +121,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn swap_output_single(ref self: TContractState, zero_for_one: bool, amount_out: u256, amount_in_max: u256, max_price_in_sqrt_price_x96: u256, deadline: u64) -> u256;
     fn jediswap_v2_mint_callback(ref self: TContractState, amount0_owed: u256, amount1_owed: u256, callback_data_span: Span<felt252>);
     fn jediswap_v2_swap_callback(ref self: TContractState, amount0_delta: i256, amount1_delta: i256, callback_data_span: Span<felt252>);
+    fn claim_reward(ref self: TContractState, reward_contract: ContractAddress, claim_selector: felt252, amount: u128, proof: Span<felt252>, reward_token: ContractAddress, receiver: ContractAddress);
     fn pause(ref self: TContractState);
     fn unpause(ref self: TContractState);
 }
@@ -248,6 +250,7 @@ mod TeaVaultJediV2 {
         Collect: Collect,
         CollectSwapFees: CollectSwapFees,
         Swap: Swap,
+        ClaimReward: ClaimReward,
         #[flat]
         UpgradeableEvent: UpgradeableComponent::Event,
         #[flat]
@@ -358,6 +361,15 @@ mod TeaVaultJediV2 {
         exact_input: bool,
         amount_in: u256,
         amount_out: u256
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct ClaimReward {
+        #[key]
+        reward_token: ContractAddress,
+        #[key]
+        receiver: ContractAddress,
+        amount: u128
     }
 
     #[constructor]
@@ -737,7 +749,7 @@ mod TeaVaultJediV2 {
                 amount1: deposited_amount1,
                 fee_amount0: entry_fee_amount0,
                 fee_amount1: entry_fee_amount1
-             });
+            });
             self.reentrancy_guard.end();
             (deposited_amount0, deposited_amount1)
         }
@@ -1005,7 +1017,7 @@ mod TeaVaultJediV2 {
             };
             assert (amount_out >= amount_out_min, Errors::INVALID_PRICE_SLIPPAGE);
 
-            self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
+            self.emit(Swap { zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out });
             self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_out
@@ -1065,7 +1077,7 @@ mod TeaVaultJediV2 {
             assert (!zero_max_price_in_sqrt_price_x96 || amount_out == amount_out_received, Errors::INVALID_PRICE_SLIPPAGE);
             assert (amount_in <= amount_in_max, Errors::INVALID_PRICE_SLIPPAGE);
 
-            self.emit(Swap {zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out});
+            self.emit(Swap { zero_for_one: zero_for_one, exact_input: false, amount_in: amount_in, amount_out: amount_out });
             self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_in
@@ -1115,6 +1127,41 @@ mod TeaVaultJediV2 {
             }
             else {
                 pay(self.token1.read(), get_contract_address(), caller, amount_to_pay);
+            }
+        }
+
+        /// @notice Claim reward token and transfer to receiver for donating vault asset back
+        /// @notice Only owner can do this
+        /// @param reward_contract Contract address for claiming reward token
+        /// @param claim_selector Function selector of claiming reward token
+        /// @param amount Reward amount
+        /// @param proof Merkle proof for claiming reward
+        /// @param reward_token Reward token contract address
+        /// @param receiver Reward token receiver
+        fn claim_reward(
+            ref self: ContractState,
+            reward_contract: ContractAddress,
+            claim_selector: felt252,
+            amount: u128,
+            proof: Span<felt252>,
+            reward_token: ContractAddress,
+            receiver: ContractAddress
+        ) {
+            self.ownable.assert_only_owner();
+            assert(reward_token != self.token0.read() && reward_token != self.token1.read(), Errors::INVALID_REWARD_TOKEN);
+
+            let mut calldata: Array<felt252> = ArrayTrait::new();
+            Serde::serialize(@amount, ref calldata);
+            Serde::serialize(@proof, ref calldata);
+            let mut res = starknet::call_contract_syscall(
+                address: reward_contract,
+                entry_point_selector: claim_selector,
+                calldata: calldata.span(),
+            );
+
+            if ResultTrait::is_ok(@res) {
+                pay(reward_token, get_contract_address(), receiver, amount.into());
+                self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: amount });
             }
         }
 
