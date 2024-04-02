@@ -1,13 +1,13 @@
 use starknet::{ ContractAddress, info::get_block_number };
 use core::integer::{ BoundedU256, BoundedU64 };
-use openzeppelin::{token::erc20::{ ERC20ABIDispatcher, interface::ERC20ABIDispatcherTrait }};
-use yas_core::{
-    numbers::signed_integer::i32::i32Impl,
-    utils::math_utils::pow
-};
+use openzeppelin::token::erc20::{ ERC20ABIDispatcher, interface::ERC20ABIDispatcherTrait };
 use jediswap_v2_core::{
     jediswap_v2_factory::{ IJediSwapV2FactoryDispatcher, IJediSwapV2FactoryDispatcherTrait, JediSwapV2Factory },
-    jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait }
+    jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait },
+    libraries::{
+        signed_integers::i32::i32Impl,
+        math_utils::pow
+    }
 };
 use tea_vault_jedi_v2::tea_vault_jedi_v2::{
     ITeaVaultJediV2Dispatcher,
@@ -22,9 +22,9 @@ use super::utils::{ owner, manager, user, invalid_address, new_owner, token_0_1,
 
 fn setup_factory() -> (ContractAddress, ContractAddress) {
     let owner = owner();
-    let pool_class = declare('JediSwapV2Pool');
+    let pool_class = declare("JediSwapV2Pool");
 
-    let factory_class = declare('JediSwapV2Factory');
+    let factory_class = declare("JediSwapV2Factory");
     let mut factory_constructor_calldata = Default::default();
     Serde::serialize(@owner, ref factory_constructor_calldata);
     Serde::serialize(@pool_class.class_hash, ref factory_constructor_calldata);
@@ -60,10 +60,10 @@ fn setup() -> (
 ) {
     let (owner, factory) = setup_factory();
     let (token0, token1) = token_0_1();
-    let pool_address = create_pool(factory, token0, token1, 3000);
+    let _ = create_pool(factory, token0, token1, 3000);
 
-    let name = 'Test Vault';
-    let symbol = 'TVault';
+    let name: ByteArray = "Test Vault";
+    let symbol: ByteArray = "TVault";
     let fee_tier = 3000;
     let decimal_offset = 0;
     let fee_cap = 999999;
@@ -87,7 +87,7 @@ fn setup() -> (
     Serde::serialize(@fee_config, ref constructor_calldata);
     Serde::serialize(@owner, ref constructor_calldata);
     
-    let vault_class = declare('TeaVaultJediV2');
+    let vault_class = declare("TeaVaultJediV2");
     let vault = vault_class.deploy(@constructor_calldata).unwrap();
 
     let vault_dispatcher = ITeaVaultJediV2Dispatcher { contract_address: vault };
@@ -223,7 +223,7 @@ fn test_owner_functions_non_owner_assign_manager() {
 // user and manager functions
 #[test]
 fn test_user_manager_functions_user_deposit_withdraw() {
-    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, _, _) = setup();
+    let (vault_dispatcher, token0_dispatcher, _, _, _) = setup();
     let owner = owner();
     let user = user();
     let vault_address = vault_dispatcher.contract_address;
@@ -275,7 +275,7 @@ fn test_user_manager_functions_user_deposit_withdraw() {
 #[test]
 #[should_panic(expected: ('u256_sub Overflow',))]
 fn test_user_manager_functions_non_user_deposit_withdraw() {
-    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, _, _) = setup();
+    let (vault_dispatcher, token0_dispatcher, _, _, _) = setup();
     let user = user();
     let vault_address = vault_dispatcher.contract_address;
 
@@ -292,7 +292,7 @@ fn test_user_manager_functions_non_user_deposit_withdraw() {
 #[test]
 #[should_panic(expected: ('Invalid price slippage',))]
 fn test_user_manager_functions_slippage_checks_when_depositing() {
-    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, _, _) = setup();
+    let (vault_dispatcher, token0_dispatcher, _, _, _) = setup();
     let user = user();
     let vault_address = vault_dispatcher.contract_address;
 
@@ -306,7 +306,7 @@ fn test_user_manager_functions_slippage_checks_when_depositing() {
 #[test]
 #[should_panic(expected: ('Invalid price slippage',))]
 fn test_user_manager_functions_slippage_checks_when_withdrawing() {
-    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, _, _) = setup();
+    let (vault_dispatcher, token0_dispatcher, _, _, _) = setup();
     let user = user();
     let vault_address = vault_dispatcher.contract_address;
 
@@ -321,15 +321,14 @@ fn test_user_manager_functions_slippage_checks_when_withdrawing() {
 
 #[test]
 fn test_user_manager_functions_manager_swap_add_remove_positions_after_deposit() {
-    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, factory_dispatcher, pool_dispatcher) = setup();
+    let (vault_dispatcher, token0_dispatcher, token1_dispatcher, _, _) = setup();
     let vault_address = vault_dispatcher.contract_address;
-    let token0_address = token0_dispatcher.contract_address;
     let token1_address = token1_dispatcher.contract_address;
     let owner = owner();
     let manager = manager();
     let user = user();
 
-    let fee_config = set_fee_config(vault_dispatcher, owner, owner, 1000, 2000, 100000, 0);
+    set_fee_config(vault_dispatcher, owner, owner, 1000, 2000, 100000, 0);
     set_manager(vault_dispatcher, owner, manager);
 
     start_prank(CheatTarget::One(vault_address), user);

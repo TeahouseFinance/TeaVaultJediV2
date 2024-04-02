@@ -3,7 +3,7 @@
 // tea_vault_jedi_v2.cairo
 
 use starknet::ContractAddress;
-use yas_core::numbers::signed_integer::{ i32::i32, i256::i256 };
+use jediswap_v2_core::libraries::signed_integers::{ i32::i32, i256::i256 };
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 struct FeeConfig {
@@ -83,6 +83,10 @@ mod Errors {
     const INSUFFICIENT_SWAP_RESULT: felt252 = 'Insufficient swap result';
     const INVALID_TOKEN_ORDER: felt252 = 'Invalid token order';
     const INVALID_INDEX: felt252 = 'Invalid index';
+    const SET_ARRAY_FAILED:felt252 = 'Set array failed';
+    const APPEND_ARRAY_FAILED: felt252 = 'Append array failed';
+    const POP_ARRAY_FAILED: felt252 = 'Pop array failed';
+    const INVALID_REWARD_TOKEN: felt252 = 'Invalid reward token';
 }
 
 #[starknet::interface]
@@ -120,6 +124,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn swap_output_single(ref self: TContractState, zero_for_one: bool, amount_out: u256, amount_in_max: u256, max_price_in_sqrt_price_x96: u256, deadline: u64) -> u256;
     fn jediswap_v2_mint_callback(ref self: TContractState, amount0_owed: u256, amount1_owed: u256, callback_data_span: Span<felt252>);
     fn jediswap_v2_swap_callback(ref self: TContractState, amount0_delta: i256, amount1_delta: i256, callback_data_span: Span<felt252>);
+    fn claim_reward(ref self: TContractState, reward_contract: ContractAddress, claim_selector: felt252, amount: u128, proof: Span<felt252>, reward_token: ContractAddress, receiver: ContractAddress);
     fn pause(ref self: TContractState);
     fn unpause(ref self: TContractState);
 }
@@ -137,10 +142,8 @@ mod TeaVaultJediV2 {
         contract_address_to_felt252
     };
     use core::integer::{ u256_from_felt252, BoundedU128 };
-    use yas_core::numbers::signed_integer::{ i32::i32, i256::i256, integer_trait::IntegerTrait };
-    use yas_core::utils::math_utils::{ FullMath::{ mul_div, mul_div_rounding_up }, pow };
-    use openzeppelin::upgrades::UpgradeableComponent;
-    use openzeppelin::upgrades::interface::IUpgradeable;
+    use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::upgrades::{ UpgradeableComponent, interface::IUpgradeable } ;
     use openzeppelin::security::{ PausableComponent, ReentrancyGuardComponent };
     use openzeppelin::token::erc20::{
         ERC20Component,
@@ -150,10 +153,14 @@ mod TeaVaultJediV2 {
     use alexandria_storage::list::{ List, ListTrait };
     use jediswap_v2_core::jediswap_v2_factory::{ IJediSwapV2FactoryDispatcher, IJediSwapV2FactoryDispatcherTrait };
     use jediswap_v2_core::jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait };
-    use jediswap_v2_core::libraries::tick_math::TickMath;
+    use jediswap_v2_core::libraries::{
+        tick_math::TickMath,
+        signed_integers::{ i32::i32, i256::i256, integer_trait::IntegerTrait },
+        full_math::{ mul_div, mul_div_rounding_up },
+        math_utils::pow
+    };
     use jediswap_v2_periphery::libraries::periphery_payments::PeripheryPayments::pay;
     use tea_vault_jedi_v2::libraries::{
-        ownable::OwnableComponent,
         vault_utils::VaultUtils::{
             get_liquidity_for_amounts,
             get_amounts_for_liquidity,
@@ -195,11 +202,11 @@ mod TeaVaultJediV2 {
 
     #[abi(embed_v0)]
     impl ERC20MetadataImpl of IERC20Metadata<ContractState> {
-        fn name(self: @ContractState) -> felt252 {
+        fn name(self: @ContractState) -> ByteArray {
             self.erc20.name()
         }
 
-        fn symbol(self: @ContractState) -> felt252 {
+        fn symbol(self: @ContractState) -> ByteArray {
             self.erc20.symbol()
         }
     
@@ -248,6 +255,7 @@ mod TeaVaultJediV2 {
         Collect: Collect,
         CollectSwapFees: CollectSwapFees,
         Swap: Swap,
+        ClaimReward: ClaimReward,
         #[flat]
         UpgradeableEvent: UpgradeableComponent::Event,
         #[flat]
@@ -360,11 +368,20 @@ mod TeaVaultJediV2 {
         amount_out: u256
     }
 
+    #[derive(Drop, starknet::Event)]
+    struct ClaimReward {
+        #[key]
+        reward_token: ContractAddress,
+        #[key]
+        receiver: ContractAddress,
+        amount: u128
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
-        name: felt252,
-        symbol: felt252,
+        name: ByteArray,
+        symbol: ByteArray,
         factory: ContractAddress,
         token0: ContractAddress,
         token1: ContractAddress,
@@ -481,7 +498,7 @@ mod TeaVaultJediV2 {
         /// @return fee1 Pending fee token1 amount
         fn position_info_ticks(self: @ContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256) {
             let positions = self.positions.read();
-            let (_, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (_, _, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
 
             position_info(get_contract_address(), self.pool.read(), position)
         }
@@ -691,7 +708,7 @@ mod TeaVaultJediV2 {
                     deposited_amount0 += amount0;
                     deposited_amount1 += amount1;
                     position.liquidity += liquidity;
-                    positions.set(i, position);
+                    assert(positions.set(i, position).is_ok(), Errors::SET_ARRAY_FAILED);
 
                     i += 1;
                 };
@@ -737,7 +754,7 @@ mod TeaVaultJediV2 {
                 amount1: deposited_amount1,
                 fee_amount0: entry_fee_amount0,
                 fee_amount1: entry_fee_amount1
-             });
+            });
             self.reentrancy_guard.end();
             (deposited_amount0, deposited_amount1)
         }
@@ -804,7 +821,7 @@ mod TeaVaultJediV2 {
                 withdrawn_amount1 += amount1;
 
                 position.liquidity -= liquidity;
-                positions.set(i , position);
+                assert(positions.set(i , position).is_ok(), Errors::SET_ARRAY_FAILED);
 
                 i += 1;
             };
@@ -865,16 +882,19 @@ mod TeaVaultJediV2 {
             self._check_deadline(deadline);
 
             let mut positions = self.positions.read();
-            let (found, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, false);
+            let (found, i, _) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, false);
             assert(found || positions.len() < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
 
             if found {
                 let mut position: Position = positions[i];
                 position.liquidity += liquidity;
-                positions.set(i, position);
+                assert(positions.set(i, position).is_ok(), Errors::SET_ARRAY_FAILED);
             }
             else {
-                positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity });
+                assert(
+                    positions.append(Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: liquidity }).is_ok(),
+                    Errors::SET_ARRAY_FAILED
+                );
             }
             let (amount0, amount1) = self._add_liquidity(tick_lower, tick_upper, liquidity, amount0_min, amount1_min);
 
@@ -913,7 +933,7 @@ mod TeaVaultJediV2 {
             }
             else {
                 position.liquidity -= liquidity;
-                positions.set(i, position);
+                assert(positions.set(i, position).is_ok(), Errors::SET_ARRAY_FAILED);
             }
             self._collect_position_swap_fee(position);
             let (amount0, amount1) = self._remove_liquidity(tick_lower, tick_upper, liquidity);
@@ -935,7 +955,7 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
 
             let positions = self.positions.read();
-            let (_, i, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (_, _, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
             let (amount0, amount1) = self._collect_position_swap_fee(position);
 
             self.reentrancy_guard.end();
@@ -1005,7 +1025,7 @@ mod TeaVaultJediV2 {
             };
             assert (amount_out >= amount_out_min, Errors::INVALID_PRICE_SLIPPAGE);
 
-            self.emit(Swap {zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out});
+            self.emit(Swap { zero_for_one: zero_for_one, exact_input: true, amount_in: amount_in, amount_out: amount_out });
             self.callback_status.write(CallbackStatus::Initial);
             self.reentrancy_guard.end();
             amount_out
@@ -1116,6 +1136,44 @@ mod TeaVaultJediV2 {
             else {
                 pay(self.token1.read(), get_contract_address(), caller, amount_to_pay);
             }
+        }
+
+        /// @notice Claim reward token and transfer to receiver for donating vault asset back
+        /// @notice Only owner can do this
+        /// @param reward_contract Contract address for claiming reward token
+        /// @param claim_selector Function selector of claiming reward token
+        /// @param amount Reward amount
+        /// @param proof Merkle proof for claiming reward
+        /// @param reward_token Reward token contract address
+        /// @param receiver Reward token receiver
+        fn claim_reward(
+            ref self: ContractState,
+            reward_contract: ContractAddress,
+            claim_selector: felt252,
+            amount: u128,
+            proof: Span<felt252>,
+            reward_token: ContractAddress,
+            receiver: ContractAddress
+        ) {
+            self.ownable.assert_only_owner();
+            assert(reward_token != self.token0.read() && reward_token != self.token1.read(), Errors::INVALID_REWARD_TOKEN);
+            self.reentrancy_guard.start();
+
+            let mut calldata: Array<felt252> = ArrayTrait::new();
+            Serde::serialize(@amount, ref calldata);
+            Serde::serialize(@proof, ref calldata);
+            let mut res = starknet::call_contract_syscall(
+                address: reward_contract,
+                entry_point_selector: claim_selector,
+                calldata: calldata.span(),
+            );
+
+            if res.is_ok() {
+                pay(reward_token, get_contract_address(), receiver, amount.into());
+                self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: amount });
+            }
+            
+            self.reentrancy_guard.end();
         }
 
         fn pause(ref self: ContractState) {
@@ -1347,8 +1405,8 @@ mod TeaVaultJediV2 {
         }
 
         fn _pop_position(ref self: ContractState, ref positions: List<Position>, index: u32) {
-            positions.set(index, positions[positions.len() - 1]);
-            positions.pop_front();
+            assert(positions.set(index, positions[positions.len() - 1]).is_ok(), Errors::SET_ARRAY_FAILED);
+            assert(positions.pop_front().is_ok(), Errors::POP_ARRAY_FAILED);
         }
 
         fn _fraction_of_shares(

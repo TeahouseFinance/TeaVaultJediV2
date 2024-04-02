@@ -2,9 +2,9 @@ use core::option::OptionTrait;
 use starknet::{
     ContractAddress, ClassHash, contract_address_try_from_felt252, contract_address_to_felt252
 };
-use core::integer::{ u256_from_felt252 };
+use core::integer::u256_from_felt252;
 use snforge_std::{declare, start_prank, stop_prank, ContractClass, ContractClassTrait, CheatTarget};
-use yas_core::utils::math_utils::{ pow };
+use jediswap_v2_core::libraries::math_utils::pow;
 use openzeppelin::token::erc20::interface::{ IERC20Dispatcher, IERC20DispatcherTrait };
 
 fn owner() -> ContractAddress {
@@ -28,13 +28,13 @@ fn invalid_address() -> ContractAddress {
 }
 
 fn token_0_1() -> (ContractAddress, ContractAddress) {
-    let erc20_class = declare('ERC20');
+    let erc20_class = declare("ERC20");
     let initial_supply: u256 = 100000000 * pow(10, 18);
 
-    let token0_name = 'token0';
-    let token0_symbol = 'TOK0';
-    let token1_name = 'token1';
-    let token1_symbol = 'TOK1';
+    let token0_name = "token0";
+    let token0_symbol = "TOK0";
+    let token1_name = "token1";
+    let token1_symbol = "TOK1";
     
     let token0_address = erc20_class.deploy(@serialize_erc20_constructor(
         @token0_name,
@@ -64,8 +64,8 @@ fn contract_address_to_u256(contract_address: ContractAddress) -> u256 {
 }
 
 fn serialize_erc20_constructor(
-    name: @felt252,
-    symbol: @felt252,
+    name: @ByteArray,
+    symbol: @ByteArray,
     initial_supply: @u256,
     recipient: @ContractAddress
 ) -> Array<felt252> {

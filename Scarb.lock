@@ -3,39 +3,37 @@ version = 1
 
 [[package]]
 name = "alexandria_storage"
-version = "0.2.0"
-source = "git+https://github.com/keep-starknet-strange/alexandria.git?tag=cairo-v2.3.0-rc0#ae1d5149ff601a7ac5b39edc867d33ebd83d7f4f"
+version = "0.3.0"
+source = "git+https://github.com/keep-starknet-strange/alexandria.git#bbc010b922d9ca6f807ef01b0b255e34331b5eac"
 
 [[package]]
 name = "jediswap_v2_core"
 version = "0.0.1"
-source = "git+https://github.com/jediswaplabs/JediSwap-v2-core.git#aa72cb330f88db0768c331ad0f065cac7810c215"
+source = "git+https://github.com/jediswaplabs/JediSwap-v2-core.git?branch=5-bug-fixes#cebd3d822e66516c53a9f6cfafcaca17ae2a588f"
 dependencies = [
  "openzeppelin",
  "snforge_std",
- "yas_core",
 ]
 
 [[package]]
 name = "jediswap_v2_periphery"
 version = "0.0.1"
-source = "git+https://github.com/jediswaplabs/JediSwap-v2-periphery.git#51da9ee05ade79898d4ed27d13317b39f8475441"
+source = "git+https://github.com/jediswaplabs/JediSwap-v2-periphery.git?branch=5-bug-fixes#a888fd353af73046ce9856883780fb97b528d6e5"
 dependencies = [
  "jediswap_v2_core",
  "openzeppelin",
  "snforge_std",
- "yas_core",
 ]
 
 [[package]]
 name = "openzeppelin"
-version = "0.8.0"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts.git?tag=v0.8.0#c23e8e96de60e6e3159b1ff8591a1187269c0eb7"
+version = "0.10.0"
+source = "git+https://github.com/OpenZeppelin/cairo-contracts.git?tag=v0.10.0#d77082732daab2690ba50742ea41080eb23299d3"
 
 [[package]]
 name = "snforge_std"
-version = "0.16.0"
-source = "git+https://github.com/foundry-rs/starknet-foundry.git?tag=v0.16.0#f58e0ab42b6095b7d0cb841ede595aecbc9cb45d"
+version = "0.20.1"
+source = "git+https://github.com/foundry-rs/starknet-foundry.git?tag=v0.20.1#fea2db8f2b20148cc15ee34b08de12028eb42942"
 
 [[package]]
 name = "tea_vault_jedi_v2"
@@ -46,10 +44,4 @@ dependencies = [
  "jediswap_v2_periphery",
  "openzeppelin",
  "snforge_std",
- "yas_core",
 ]
-
-[[package]]
-name = "yas_core"
-version = "0.1.0"
-source = "git+https://github.com/lambdaclass/yet-another-swap.git#f3ee03a3564a37698e9589f564ac63aa59dab283"

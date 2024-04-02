@@ -1,7 +1,6 @@
 [package]
 name = "tea_vault_jedi_v2"
 version = "0.1.0"
-edition = "2023_10"
 
 # See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
 
@@ -19,10 +18,9 @@ build-external-contracts = [
 ]
 
 [dependencies]
-starknet = ">=2.4.0"
-snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.16.0" }
-yas_core = { git = "https://github.com/lambdaclass/yet-another-swap.git" }
-openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.8.0" }
-alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git", tag = "cairo-v2.3.0-rc0" }
-jediswap_v2_core = { git = "https://github.com/jediswaplabs/JediSwap-v2-core.git" }
-jediswap_v2_periphery = { git = "https://github.com/jediswaplabs/JediSwap-v2-periphery.git" }
+starknet = ">=2.6.0"
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry.git", tag = "v0.20.1" }
+openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.10.0" }
+alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git", commit = "bbc010b" }
+jediswap_v2_core = { git = "https://github.com/jediswaplabs/JediSwap-v2-core.git", branch = "5-bug-fixes" }
+jediswap_v2_periphery = { git = "https://github.com/jediswaplabs/JediSwap-v2-periphery.git", branch = "5-bug-fixes" }

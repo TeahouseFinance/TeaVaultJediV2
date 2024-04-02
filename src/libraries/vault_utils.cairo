@@ -4,14 +4,14 @@
 
 mod VaultUtils {
     use starknet::ContractAddress;
-    use yas_core::numbers::signed_integer::{ i32::i32 };
-    use yas_core::utils::math_utils::FullMath::mul_div;
     use jediswap_v2_core::{
         jediswap_v2_pool::{ IJediSwapV2PoolDispatcher, IJediSwapV2PoolDispatcherTrait },
         libraries::{
+            signed_integers::i32::i32,
+            full_math::mul_div,
             tick_math::TickMath::get_sqrt_ratio_at_tick,
             sqrt_price_math::SqrtPriceMath::{ Q96, Q128 },
-            position::{ PositionKey }
+            position::PositionKey
         }
     };
     use jediswap_v2_periphery::libraries::liquidity_amounts::LiquidityAmounts;
