@@ -387,6 +387,7 @@ mod TeaVaultJediV2 {
         token1: ContractAddress,
         fee_tier: u32,
         decimal_offset: u8,
+        manager: ContractAddress,
         fee_cap: u32,
         fee_config: FeeConfig,
         owner: ContractAddress
@@ -410,6 +411,7 @@ mod TeaVaultJediV2 {
         self.token1.write(token1);
         self.DECIMALS.write(decimal_offset + ERC20ABIDispatcher { contract_address: token0 }.decimals());
         self._set_fee_config(fee_config);
+        self.manager.write(manager);
 
         self.emit(TeaVaultV3PairCreated { tea_vault_address: get_contract_address() });
     }

@@ -85,6 +85,7 @@ fn setup() -> (
     Serde::serialize(@decimal_offset, ref constructor_calldata);
     Serde::serialize(@fee_cap, ref constructor_calldata);
     Serde::serialize(@fee_config, ref constructor_calldata);
+    Serde::serialize(@new_owner(), ref constructor_calldata); // temp manager for deployment
     Serde::serialize(@owner, ref constructor_calldata);
     
     let vault_class = declare("TeaVaultJediV2");
