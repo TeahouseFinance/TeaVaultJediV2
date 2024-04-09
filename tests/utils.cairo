@@ -19,6 +19,10 @@ fn manager() -> ContractAddress {
     contract_address_try_from_felt252('manager').unwrap()
 }
 
+fn reward_claimer() -> ContractAddress {
+    contract_address_try_from_felt252('reward_claimer').unwrap()
+}
+
 fn user() -> ContractAddress {
     contract_address_try_from_felt252('user').unwrap()
 }

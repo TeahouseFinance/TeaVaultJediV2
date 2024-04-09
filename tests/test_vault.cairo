@@ -17,7 +17,7 @@ use tea_vault_jedi_v2::tea_vault_jedi_v2::{
 };
 use snforge_std::{ declare, CheatTarget, ContractClassTrait, start_prank, stop_prank, start_roll, stop_roll, start_warp, stop_warp };
 
-use super::utils::{ owner, manager, user, invalid_address, new_owner, token_0_1, is_close_to };
+use super::utils::{ owner, manager, reward_claimer, user, invalid_address, new_owner, token_0_1, is_close_to };
 
 
 fn setup_factory() -> (ContractAddress, ContractAddress) {
@@ -83,9 +83,10 @@ fn setup() -> (
     Serde::serialize(@token1, ref constructor_calldata);
     Serde::serialize(@fee_tier, ref constructor_calldata);
     Serde::serialize(@decimal_offset, ref constructor_calldata);
+    Serde::serialize(@new_owner(), ref constructor_calldata); // temp manager for deployment
+    Serde::serialize(@new_owner(), ref constructor_calldata); // temp reward_claimer for deployment
     Serde::serialize(@fee_cap, ref constructor_calldata);
     Serde::serialize(@fee_config, ref constructor_calldata);
-    Serde::serialize(@new_owner(), ref constructor_calldata); // temp manager for deployment
     Serde::serialize(@owner, ref constructor_calldata);
     
     let vault_class = declare("TeaVaultJediV2");
