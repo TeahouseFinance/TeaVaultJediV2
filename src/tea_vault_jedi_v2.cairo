@@ -60,6 +60,7 @@ enum CallbackStatus {
 mod Constants {
     const SECONDS_IN_A_YEAR: u256 = consteval_int!(365 * 24 * 60 * 60);
     const FEE_MULTIPLIER: u256 = consteval_int!(1000000);
+    const FEE_MULTIPLIER_A_YEAR: u256 = FEE_MULTIPLIER * SECONDS_IN_A_YEAR;
     const MAX_POSITION_LENGTH: u32 = consteval_int!(5);
 }
 
@@ -74,6 +75,7 @@ mod Errors {
     const ZERO_LIQUIDITY: felt252 = 'Zero liquidity';
     const SWAP_RATE_LIMIT: felt252 = 'Swap rate limit';
     const CALLER_IS_NOT_MANAGER: felt252 = 'Caller is not manager';
+    const CALLER_IS_NOT_REWARD_CLAIMER: felt252 = 'Caller is not reward claimer';
     const INVALID_CALLBACK_STATUS: felt252 = 'Invalid callback status';
     const INVALID_CALLBACK_CALLER: felt252 = 'Invalid callback caller';
     const SWAP_IN_ZERO_LIQUIDITY_REGION: felt252 = 'Swap in zero liquidity region';
@@ -86,7 +88,6 @@ mod Errors {
     const SET_ARRAY_FAILED:felt252 = 'Set array failed';
     const APPEND_ARRAY_FAILED: felt252 = 'Append array failed';
     const POP_ARRAY_FAILED: felt252 = 'Pop array failed';
-    const INVALID_REWARD_TOKEN: felt252 = 'Invalid reward token';
 }
 
 #[starknet::interface]
@@ -113,6 +114,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn get_all_positions(self: @TContractState) -> Array<Position>;
     fn set_fee_config(ref self: TContractState, fee_config: FeeConfig);
     fn assign_manager(ref self: TContractState, manager: ContractAddress);
+    fn assign_reward_claimer(ref self: TContractState, reward_claimer: ContractAddress);
     fn collect_management_fee(ref self: TContractState) -> u256;
     fn deposit(ref self: TContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256);
     fn withdraw(ref self: TContractState, shares: u256, amount0_min: u256, amount1_min: u256) -> (u256, u256);
@@ -221,6 +223,7 @@ mod TeaVaultJediV2 {
         DECIMALS: u8,
         FEE_CAP: u32,
         manager: ContractAddress,
+        reward_claimer: ContractAddress,
         positions: List<Position>,
         fee_config: FeeConfig,
         pool: ContractAddress,
@@ -247,6 +250,7 @@ mod TeaVaultJediV2 {
         TeaVaultV3PairCreated: TeaVaultV3PairCreated,
         FeeConfigChanged: FeeConfigChanged,
         ManagerChanged: ManagerChanged,
+        RewardClaimerChanged: RewardClaimerChanged,
         ManagementFeeCollected: ManagementFeeCollected,
         DepositShares: DepositShares,
         WithdrawShares: WithdrawShares,
@@ -288,6 +292,14 @@ mod TeaVaultJediV2 {
         sender: ContractAddress,
         #[key]
         new_manager: ContractAddress
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct RewardClaimerChanged {
+        #[key]
+        sender: ContractAddress,
+        #[key]
+        new_reward_claimer: ContractAddress
     }
 
     #[derive(Drop, starknet::Event)]
@@ -388,6 +400,7 @@ mod TeaVaultJediV2 {
         fee_tier: u32,
         decimal_offset: u8,
         manager: ContractAddress,
+        reward_claimer: ContractAddress,
         fee_cap: u32,
         fee_config: FeeConfig,
         owner: ContractAddress
@@ -412,6 +425,7 @@ mod TeaVaultJediV2 {
         self.DECIMALS.write(decimal_offset + ERC20ABIDispatcher { contract_address: token0 }.decimals());
         self._set_fee_config(fee_config);
         self.manager.write(manager);
+        self.reward_claimer.write(reward_claimer);
 
         self.emit(TeaVaultV3PairCreated { tea_vault_address: get_contract_address() });
     }
@@ -500,7 +514,7 @@ mod TeaVaultJediV2 {
         /// @return fee1 Pending fee token1 amount
         fn position_info_ticks(self: @ContractState, tick_lower: i32, tick_upper: i32) -> (u256, u256, u256, u256) {
             let positions = self.positions.read();
-            let (_, _, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (_, position) = self._get_position_by_ticks(@positions, tick_lower, tick_upper);
 
             position_info(get_contract_address(), self.pool.read(), position)
         }
@@ -647,6 +661,16 @@ mod TeaVaultJediV2 {
 
             self.manager.write(manager);
             self.emit(ManagerChanged { sender: get_caller_address(), new_manager: manager });
+        }
+
+        /// @notice Assign reward claimer
+        /// @notice Only the owner can do this
+        /// @param reward_claimer Reward claimer for DeFi spring
+        fn assign_reward_claimer(ref self: ContractState, reward_claimer: ContractAddress) {
+            self.ownable.assert_only_owner();
+
+            self.reward_claimer.write(reward_claimer);
+            self.emit(RewardClaimerChanged { sender: get_caller_address(), new_reward_claimer: reward_claimer });
         }
 
         /// @notice Collect management fee by inflating the share token
@@ -884,11 +908,10 @@ mod TeaVaultJediV2 {
             self._check_deadline(deadline);
 
             let mut positions = self.positions.read();
-            let (found, i, _) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, false);
+            let (found, i, mut position) = self._find_position_by_ticks_if_exists(@positions, tick_lower, tick_upper);
             assert(found || positions.len() < Constants::MAX_POSITION_LENGTH, Errors::POSITION_LENGTH_EXCEEDS_LIMIT);
 
             if found {
-                let mut position: Position = positions[i];
                 position.liquidity += liquidity;
                 assert(positions.set(i, position).is_ok(), Errors::SET_ARRAY_FAILED);
             }
@@ -928,7 +951,7 @@ mod TeaVaultJediV2 {
             self._check_deadline(deadline);
 
             let mut positions = self.positions.read();
-            let (_, i, mut position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (i, mut position) = self._get_position_by_ticks(@positions, tick_lower, tick_upper);
             
             if position.liquidity == liquidity {
                 self._pop_position(ref positions, i);
@@ -957,7 +980,7 @@ mod TeaVaultJediV2 {
             self._assert_only_manager();
 
             let positions = self.positions.read();
-            let (_, _, position) = self._find_position_by_ticks(@positions, tick_lower, tick_upper, true);
+            let (_, position) = self._get_position_by_ticks(@positions, tick_lower, tick_upper);
             let (amount0, amount1) = self._collect_position_swap_fee(position);
 
             self.reentrancy_guard.end();
@@ -1157,8 +1180,7 @@ mod TeaVaultJediV2 {
             reward_token: ContractAddress,
             receiver: ContractAddress
         ) {
-            self.ownable.assert_only_owner();
-            assert(reward_token != self.token0.read() && reward_token != self.token1.read(), Errors::INVALID_REWARD_TOKEN);
+            self._assert_only_reward_claimer();
             self.reentrancy_guard.start();
 
             let mut calldata: Array<felt252> = ArrayTrait::new();
@@ -1171,8 +1193,13 @@ mod TeaVaultJediV2 {
             );
 
             if res.is_ok() {
-                pay(reward_token, get_contract_address(), receiver, amount.into());
-                self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: amount });
+                if reward_token != self.token0.read() && reward_token != self.token1.read() {
+                    pay(reward_token, get_contract_address(), receiver, amount.into());
+                    self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: amount });
+                }
+                else {
+                    self.emit(ClaimReward { reward_token: reward_token, receiver: get_contract_address(), amount: amount });
+                }    
             }
             
             self.reentrancy_guard.end();
@@ -1338,9 +1365,8 @@ mod TeaVaultJediV2 {
             if time_diff > 0 {
                 let fee_config = self.fee_config.read();
                 let fee_times_time_diff: u256 = fee_config.management_fee.into() * time_diff.into();
-                let fee_multiplier_a_year: u256 = Constants::FEE_MULTIPLIER * Constants::SECONDS_IN_A_YEAR;
-                let mut denominator: u256 = if fee_multiplier_a_year > fee_times_time_diff {
-                    fee_multiplier_a_year - fee_times_time_diff
+                let mut denominator: u256 = if Constants::FEE_MULTIPLIER_A_YEAR > fee_times_time_diff {
+                    Constants::FEE_MULTIPLIER_A_YEAR - fee_times_time_diff
                 }
                 else {
                     1
@@ -1384,13 +1410,13 @@ mod TeaVaultJediV2 {
             positions: @List<Position>,
             tick_lower: i32,
             tick_upper: i32,
-            asset_not_found: bool
+            raise_error_if_not_found: bool
         ) -> (bool, u32, Position) {
             let mut i = 0;
             let mut found = false;
             let position = loop {
                 if i == positions.len() {
-                    assert(!asset_not_found, Errors::POSITION_DOES_NOT_EXIST);
+                    assert(!raise_error_if_not_found, Errors::POSITION_DOES_NOT_EXIST);
                     break (Position { tick_lower: tick_lower, tick_upper: tick_upper, liquidity: 0 });
                 }
 
@@ -1404,6 +1430,26 @@ mod TeaVaultJediV2 {
             };
 
             (found, i, position)
+        }
+
+        fn _find_position_by_ticks_if_exists(
+            self: @ContractState,
+            positions: @List<Position>,
+            tick_lower: i32,
+            tick_upper: i32
+        ) -> (bool, u32, Position) {
+            self._find_position_by_ticks(positions, tick_lower, tick_upper, false)
+        }
+
+        fn _get_position_by_ticks(
+            self: @ContractState,
+            positions: @List<Position>,
+            tick_lower: i32,
+            tick_upper: i32 
+        ) -> (u32, Position) {
+            let (_, i, position) = self._find_position_by_ticks(positions, tick_lower, tick_upper, true);
+
+            (i, position)
         }
 
         fn _pop_position(ref self: ContractState, ref positions: List<Position>, index: u32) {
@@ -1436,6 +1482,10 @@ mod TeaVaultJediV2 {
 
         fn _assert_only_manager(self: @ContractState) {
             assert(get_caller_address() == self.manager.read(), Errors::CALLER_IS_NOT_MANAGER);
+        }
+
+        fn _assert_only_reward_claimer(self: @ContractState) {
+            assert(get_caller_address() == self.reward_claimer.read(), Errors::CALLER_IS_NOT_REWARD_CLAIMER);
         }
 
         fn _check_liquidity(self: @ContractState, liquidity: u128) {
