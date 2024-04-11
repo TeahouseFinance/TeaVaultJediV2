@@ -94,6 +94,8 @@ mod Errors {
 trait ITeaVaultJediV2<TContractState> {
     fn DECIMALS_MULTIPLIER(self: @TContractState) -> u256;
     fn manager(self: @TContractState) -> ContractAddress;
+    fn reward_contract(self: @TContractState) -> ContractAddress;
+    fn reward_claimer(self: @TContractState) -> ContractAddress;
     fn fee_config(self: @TContractState) -> FeeConfig;
     fn pool(self: @TContractState) -> ContractAddress;
     fn last_collect_management_fee(self: @TContractState) -> u64;
@@ -114,6 +116,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn get_all_positions(self: @TContractState) -> Array<Position>;
     fn set_fee_config(ref self: TContractState, fee_config: FeeConfig);
     fn assign_manager(ref self: TContractState, manager: ContractAddress);
+    fn assign_reward_contract(ref self: TContractState, reward_contract: ContractAddress);
     fn assign_reward_claimer(ref self: TContractState, reward_claimer: ContractAddress);
     fn collect_management_fee(ref self: TContractState) -> u256;
     fn deposit(ref self: TContractState, shares: u256, amount0_max: u256, amount1_max: u256) -> (u256, u256);
@@ -126,7 +129,7 @@ trait ITeaVaultJediV2<TContractState> {
     fn swap_output_single(ref self: TContractState, zero_for_one: bool, amount_out: u256, amount_in_max: u256, max_price_in_sqrt_price_x96: u256, deadline: u64) -> u256;
     fn jediswap_v2_mint_callback(ref self: TContractState, amount0_owed: u256, amount1_owed: u256, callback_data_span: Span<felt252>);
     fn jediswap_v2_swap_callback(ref self: TContractState, amount0_delta: i256, amount1_delta: i256, callback_data_span: Span<felt252>);
-    fn claim_reward(ref self: TContractState, reward_contract: ContractAddress, claim_selector: felt252, amount: u128, proof: Span<felt252>, reward_token: ContractAddress, receiver: ContractAddress);
+    fn claim_reward(ref self: TContractState, claim_selector: felt252, amount: u128, proof: Span<felt252>, reward_token: ContractAddress, receiver: ContractAddress);
     fn pause(ref self: TContractState);
     fn unpause(ref self: TContractState);
 }
@@ -223,6 +226,7 @@ mod TeaVaultJediV2 {
         DECIMALS: u8,
         FEE_CAP: u32,
         manager: ContractAddress,
+        reward_contract: ContractAddress,
         reward_claimer: ContractAddress,
         positions: List<Position>,
         fee_config: FeeConfig,
@@ -250,6 +254,7 @@ mod TeaVaultJediV2 {
         TeaVaultV3PairCreated: TeaVaultV3PairCreated,
         FeeConfigChanged: FeeConfigChanged,
         ManagerChanged: ManagerChanged,
+        RewardContractChanged: RewardContractChanged,
         RewardClaimerChanged: RewardClaimerChanged,
         ManagementFeeCollected: ManagementFeeCollected,
         DepositShares: DepositShares,
@@ -292,6 +297,14 @@ mod TeaVaultJediV2 {
         sender: ContractAddress,
         #[key]
         new_manager: ContractAddress
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct RewardContractChanged {
+        #[key]
+        sender: ContractAddress,
+        #[key]
+        new_reward_contract: ContractAddress
     }
 
     #[derive(Drop, starknet::Event)]
@@ -400,6 +413,7 @@ mod TeaVaultJediV2 {
         fee_tier: u32,
         decimal_offset: u8,
         manager: ContractAddress,
+        reward_contract: ContractAddress,
         reward_claimer: ContractAddress,
         fee_cap: u32,
         fee_config: FeeConfig,
@@ -425,6 +439,7 @@ mod TeaVaultJediV2 {
         self.DECIMALS.write(decimal_offset + ERC20ABIDispatcher { contract_address: token0 }.decimals());
         self._set_fee_config(fee_config);
         self.manager.write(manager);
+        self.reward_contract.write(reward_contract);
         self.reward_claimer.write(reward_claimer);
 
         self.emit(TeaVaultV3PairCreated { tea_vault_address: get_contract_address() });
@@ -438,6 +453,14 @@ mod TeaVaultJediV2 {
 
         fn manager(self: @ContractState) -> ContractAddress {
             self.manager.read()
+        }
+
+        fn reward_contract(self: @ContractState) -> ContractAddress {
+            self.reward_contract.read()
+        }
+
+        fn reward_claimer(self: @ContractState) -> ContractAddress {
+            self.reward_claimer.read()
         }
         
         fn fee_config(self: @ContractState) -> FeeConfig {
@@ -661,6 +684,16 @@ mod TeaVaultJediV2 {
 
             self.manager.write(manager);
             self.emit(ManagerChanged { sender: get_caller_address(), new_manager: manager });
+        }
+
+        /// @notice Assign reward contract
+        /// @notice Only the owner can do this
+        /// @param reward_contract Reward contract for DeFi spring
+        fn assign_reward_contract(ref self: ContractState, reward_contract: ContractAddress) {
+            self.ownable.assert_only_owner();
+
+            self.reward_contract.write(reward_contract);
+            self.emit(RewardContractChanged { sender: get_caller_address(), new_reward_contract: reward_contract });
         }
 
         /// @notice Assign reward claimer
@@ -1165,7 +1198,6 @@ mod TeaVaultJediV2 {
 
         /// @notice Claim reward token and transfer to receiver for donating vault asset back
         /// @notice Only owner can do this
-        /// @param reward_contract Contract address for claiming reward token
         /// @param claim_selector Function selector of claiming reward token
         /// @param amount Reward amount
         /// @param proof Merkle proof for claiming reward
@@ -1173,7 +1205,6 @@ mod TeaVaultJediV2 {
         /// @param receiver Reward token receiver
         fn claim_reward(
             ref self: ContractState,
-            reward_contract: ContractAddress,
             claim_selector: felt252,
             amount: u128,
             proof: Span<felt252>,
@@ -1187,7 +1218,7 @@ mod TeaVaultJediV2 {
             Serde::serialize(@amount, ref calldata);
             Serde::serialize(@proof, ref calldata);
             let mut res = starknet::call_contract_syscall(
-                address: reward_contract,
+                address: self.reward_contract.read(),
                 entry_point_selector: claim_selector,
                 calldata: calldata.span(),
             );

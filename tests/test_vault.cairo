@@ -84,6 +84,7 @@ fn setup() -> (
     Serde::serialize(@fee_tier, ref constructor_calldata);
     Serde::serialize(@decimal_offset, ref constructor_calldata);
     Serde::serialize(@new_owner(), ref constructor_calldata); // temp manager for deployment
+    Serde::serialize(@new_owner(), ref constructor_calldata); // temp reward_contract for deployment
     Serde::serialize(@new_owner(), ref constructor_calldata); // temp reward_claimer for deployment
     Serde::serialize(@fee_cap, ref constructor_calldata);
     Serde::serialize(@fee_config, ref constructor_calldata);
