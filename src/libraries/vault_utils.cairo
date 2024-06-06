@@ -11,7 +11,8 @@ mod VaultUtils {
             full_math::mul_div,
             tick_math::TickMath::get_sqrt_ratio_at_tick,
             sqrt_price_math::SqrtPriceMath::{ Q96, Q128 },
-            position::PositionKey
+            position::PositionKey,
+            math_utils::mod_subtraction
         }
     };
     use jediswap_v2_periphery::libraries::liquidity_amounts::LiquidityAmounts;
@@ -148,7 +149,10 @@ mod VaultUtils {
         else {
             fee_growth_global_x128 - fee_growth_outside_x128_upper
         };
-        let fee_growth_inside_x128 = fee_growth_global_x128 - fee_growth_below_x128 - fee_growth_above_x128;
+        let fee_growth_inside_x128 = mod_subtraction(
+            mod_subtraction(fee_growth_global_x128, fee_growth_below_x128),
+            fee_growth_above_x128
+        );
 
         mul_div(
             fee_growth_inside_x128 - fee_growth_inside_last_x128,
