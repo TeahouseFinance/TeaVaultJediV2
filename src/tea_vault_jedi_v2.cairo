@@ -399,7 +399,7 @@ mod TeaVaultJediV2 {
         reward_token: ContractAddress,
         #[key]
         receiver: ContractAddress,
-        amount: u128
+        amount: u256
     }
 
     #[constructor]
@@ -1214,6 +1214,7 @@ mod TeaVaultJediV2 {
             self._assert_only_reward_claimer();
             self.reentrancy_guard.start();
 
+            let balance_before = self._get_token_balance(reward_token);
             let mut calldata: Array<felt252> = ArrayTrait::new();
             Serde::serialize(@amount, ref calldata);
             Serde::serialize(@proof, ref calldata);
@@ -1224,13 +1225,15 @@ mod TeaVaultJediV2 {
             );
 
             if res.is_ok() {
-                if reward_token != self.token0.read() && reward_token != self.token1.read() {
-                    pay(reward_token, get_contract_address(), receiver, amount.into());
-                    self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: amount });
-                }
-                else {
-                    self.emit(ClaimReward { reward_token: reward_token, receiver: get_contract_address(), amount: amount });
-                }    
+                let balance_after = self._get_token_balance(reward_token);
+                let reward_amount = balance_after - balance_before;
+                if reward_amount > 0 {
+                    let fee_config = self.fee_config.read();
+                    let performance_fee = self._fraction_of_fees(reward_amount, fee_config.performance_fee);
+                    pay(reward_token, get_contract_address(), receiver, reward_amount - performance_fee);
+                    pay(reward_token, get_contract_address(), fee_config.treasury, performance_fee);
+                    self.emit(ClaimReward { reward_token: reward_token, receiver: receiver, amount: reward_amount });
+                }  
             }
             
             self.reentrancy_guard.end();
